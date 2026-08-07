@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
   "mcp==2.0.0",
-  "domoxml @ git+https://github.com/Daftscientist/domOXML.git@428eb015470e9893a53a9661b4343b319378284e",
+  "domoxml @ git+https://github.com/Daftscientist/domOXML.git@1c8c4263ba11809d200804aa37ad8f82cc2e6836",
   "pydantic>=2.13",
   "beautifulsoup4>=4.14",
   "tinycss2>=1.5",

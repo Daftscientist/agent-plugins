@@ -1237,6 +1237,10 @@ Output schema:
       "title": "Presentation Id",
       "type": "string"
     },
+    "preview_page_count": {
+      "title": "Preview Page Count",
+      "type": "integer"
+    },
     "revision": {
       "pattern": "^rev_[A-Za-z0-9_-]{8,}$",
       "title": "Revision",
@@ -1290,6 +1294,7 @@ Output schema:
     "created_at",
     "updated_at",
     "slide_count",
+    "preview_page_count",
     "slides"
   ],
   "title": "PresentationInspectResult",
@@ -5390,7 +5395,7 @@ Annotations:
 - `office://presentations/{presentation_id}` — Presentation metadata
 - `office://presentations/{presentation_id}/outline` — Presentation outline
 - `office://presentations/{presentation_id}/validation` — Presentation validation
-- `office://presentations/{presentation_id}/preview{?quality,labels,columns}` — Presentation preview
+- `office://presentations/{presentation_id}/preview{?quality,labels,columns,page}` — Presentation preview
 - `office://presentations/{presentation_id}/revisions/{revision_id}` — Presentation revision
 - `office://presentations/{presentation_id}/revisions/{revision_id}/file` — PowerPoint revision file
 - `office://presentations/{presentation_id}/slides/{slide_id}` — Slide structure

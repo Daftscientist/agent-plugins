@@ -10,6 +10,7 @@ from urllib.parse import unquote_to_bytes, urlparse
 
 import tinycss2
 from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
 from PIL import Image
 
 from office_mcp.constants import MAX_HTML_BYTES, MAX_REMOTE_ASSET_BYTES
@@ -142,6 +143,16 @@ def sanitize_fragment(
     roots = [child for child in soup.contents if isinstance(child, Tag)]
     if not roots:
         raise OfficeError(ErrorCode.INVALID_HTML, "HTML must contain at least one element")
+    # Callers that consume this fragment's root tag(s) (element_add, replace_html) discard
+    # anything that isn't a Tag, so stray top-level text would otherwise be silently lost
+    # rather than rejected. Whitespace between/around root tags is insignificant and fine.
+    stray_text = "".join(
+        child for child in soup.contents if isinstance(child, NavigableString)
+    ).strip()
+    if stray_text:
+        raise OfficeError(
+            ErrorCode.INVALID_HTML, "HTML must not contain text outside its root element(s)"
+        )
     if exactly_one_root and len(roots) != 1:
         raise OfficeError(ErrorCode.INVALID_HTML, "exactly one root element is required")
     assigned: list[str] = []
@@ -199,8 +210,46 @@ def remint_ids(html: str) -> str:
     return str(soup)
 
 
+def _is_hidden_element(tag: Tag) -> bool:
+    if tag.has_attr("hidden"):
+        return True
+    style = tag.get("style")
+    if not style:
+        return False
+    styles = parse_styles(str(style))
+    return styles.get("display") == "none" or styles.get("visibility") in {"hidden", "collapse"}
+
+
 def visible_text(html: str) -> str:
-    return " ".join(BeautifulSoup(html, "html.parser").stripped_strings)
+    """Search-indexed text, excluding content Office would not actually render.
+
+    Deliberately supports only `hidden`, `display:none`, and `visibility:hidden` /
+    `collapse`, inherited down to descendants - not a full CSS visibility/layout
+    engine. A descendant that re-declares `visibility:visible` under a hidden
+    ancestor is still treated as hidden, matching how contact-sheet rendering
+    would in practice never surface it as a distinct paint anyway.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    hidden_cache: dict[int, bool] = {}
+
+    def hidden(tag: Tag) -> bool:
+        cached = hidden_cache.get(id(tag))
+        if cached is not None:
+            return cached
+        parent = tag.parent
+        result = _is_hidden_element(tag) or (isinstance(parent, Tag) and hidden(parent))
+        hidden_cache[id(tag)] = result
+        return result
+
+    parts: list[str] = []
+    for node in soup.find_all(string=True):
+        parent = node.parent
+        if isinstance(parent, Tag) and hidden(parent):
+            continue
+        text = node.strip()
+        if text:
+            parts.append(text)
+    return " ".join(parts)
 
 
 def model_facing_html(html: str) -> str:

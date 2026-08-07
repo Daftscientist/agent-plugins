@@ -265,7 +265,7 @@ wheels = [
 [[package]]
 name = "domoxml"
 version = "0.1.0a0"
-source = { git = "https://github.com/Daftscientist/domOXML.git?rev=428eb015470e9893a53a9661b4343b319378284e#428eb015470e9893a53a9661b4343b319378284e" }
+source = { git = "https://github.com/Daftscientist/domOXML.git?rev=1c8c4263ba11809d200804aa37ad8f82cc2e6836#1c8c4263ba11809d200804aa37ad8f82cc2e6836" }
 dependencies = [
     { name = "brotli" },
     { name = "defusedxml" },
@@ -650,7 +650,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14" },
-    { name = "domoxml", git = "https://github.com/Daftscientist/domOXML.git?rev=428eb015470e9893a53a9661b4343b319378284e" },
+    { name = "domoxml", git = "https://github.com/Daftscientist/domOXML.git?rev=1c8c4263ba11809d200804aa37ad8f82cc2e6836" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.26" },
     { name = "mcp", specifier = "==2.0.0" },

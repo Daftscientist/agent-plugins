@@ -276,3 +276,62 @@ async def test_stale_revision_and_invalid_hierarchy_operations_are_atomic(
     assert (
         await service.inspect(LOCAL_SCOPE, PresentationInspectArgs(presentation_id=pid))
     ).revision == fresh.revision
+
+
+async def test_element_add_and_replace_html_reject_stray_sibling_text(
+    office: tuple[MCPServer[Any], OfficeRuntime],
+) -> None:
+    """A fragment operation must never silently drop visible content: text sitting
+    beside the element root(s) has to be rejected, not discarded during insertion."""
+    _, runtime = office
+    service = runtime.service
+    created = await service.create(
+        LOCAL_SCOPE,
+        PresentationCreateArgs(
+            name="Stray text",
+            slides=[
+                NewSlide(
+                    name="Cover",
+                    html='<section data-office-name="root"><h1>Hi</h1></section>',
+                )
+            ],
+        ),
+    )
+    pid, revision = created.presentation_id, created.revision
+    slide = created.slides[0].slide_id
+
+    with pytest.raises(OfficeError) as add_error:
+        await service.element_add(
+            LOCAL_SCOPE,
+            ElementAddArgs(
+                presentation_id=pid,
+                slide_id=slide,
+                relative_to=ElementByName(element_name="root"),
+                position=ElementInsertPosition.APPEND,
+                html="<p>kept</p>TRAILING-VISIBLE-TEXT",
+                expected_revision=revision,
+            ),
+        )
+    assert add_error.value.code is ErrorCode.INVALID_HTML
+
+    with pytest.raises(OfficeError) as replace_error:
+        await service.element_update(
+            LOCAL_SCOPE,
+            ElementUpdateArgs(
+                presentation_id=pid,
+                slide_id=slide,
+                expected_revision=revision,
+                elements=[
+                    ElementMutation(
+                        element=ElementByName(element_name="root"),
+                        replace_html="LEADING-VISIBLE-TEXT<section>replaced</section>",
+                    )
+                ],
+            ),
+        )
+    assert replace_error.value.code is ErrorCode.INVALID_HTML
+
+    # Neither rejected mutation should have committed a new revision.
+    assert (
+        await service.inspect(LOCAL_SCOPE, PresentationInspectArgs(presentation_id=pid))
+    ).revision == revision

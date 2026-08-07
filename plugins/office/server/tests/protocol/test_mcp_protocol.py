@@ -1,13 +1,18 @@
+import base64
+import io
+import json
 from typing import Any
 
 import anyio
 import mcp_types as types
-from mcp import Client
+import pytest
+from mcp import Client, MCPError
 from mcp.client.subscriptions import ResourceUpdated
 from mcp.server import MCPServer
+from PIL import Image
 
 from office_mcp.app import OfficeRuntime
-from office_mcp.models.presentation import PresentationCreateArgs
+from office_mcp.models.presentation import NewSlide, PresentationCreateArgs
 from office_mcp.storage.protocols import LOCAL_SCOPE
 
 
@@ -150,6 +155,25 @@ async def test_protocol_mutations_errors_resources_progress_and_media(
         assert "Changed" in source.contents[0].text
         search = await client.call_tool("presentation_search", {"query": "Changed"})
         assert search.structured_content and len(search.structured_content["items"]) == 1
+        hidden_slide = await client.call_tool(
+            "presentation_create",
+            {
+                "name": "Hidden text deck",
+                "slides": [
+                    {
+                        "name": "Cover",
+                        "html": (
+                            '<section><h1>Shown</h1><p style="display:none">'
+                            "InvisibleNeedle</p></section>"
+                        ),
+                    }
+                ],
+            },
+        )
+        assert not hidden_slide.is_error
+        hidden_search = await client.call_tool("presentation_search", {"query": "InvisibleNeedle"})
+        assert hidden_search.structured_content
+        assert len(hidden_search.structured_content["items"]) == 0
         naive_search = await client.call_tool(
             "presentation_search", {"created_after": "2020-01-01T00:00:00"}
         )
@@ -177,6 +201,15 @@ async def test_protocol_mutations_errors_resources_progress_and_media(
         assert [item[0] for item in progress_updates] == sorted(
             item[0] for item in progress_updates
         )
+        revision_metadata = await client.read_resource(
+            f"office://presentations/{pid}/revisions/{revision}"
+        )
+        assert isinstance(revision_metadata.contents[0], types.TextResourceContents)
+        assert json.loads(revision_metadata.contents[0].text)["revision"] == revision
+        # The revision template must validate identifiers through the same typed model
+        # as every other template, not accept raw unchecked strings.
+        with pytest.raises(MCPError):
+            await client.read_resource(f"office://presentations/{pid}/revisions/not-a-valid-id")
 
 
 async def test_resource_pagination_completion_and_subscription_invalidation(
@@ -224,6 +257,110 @@ async def test_resource_pagination_completion_and_subscription_invalidation(
                 )
                 assert not update.is_error
                 assert await anext(subscription) == ResourceUpdated(uri=root_uri)
+
+
+async def test_nested_enum_and_discriminated_union_json_reach_office_validation(
+    office: tuple[MCPServer[Any], OfficeRuntime],
+) -> None:
+    """Wire-valid JSON for nested enums/discriminated unions must not be rejected by the
+    MCP SDK's own pre-flight argument model before Office's error taxonomy runs.
+
+    Regression test for a bug where the SDK's transient, flat-signature argument model
+    validated raw arguments via plain (python-mode) ``model_validate()`` against Office's
+    real strict nested models, and pydantic's strict mode requires literal enum instances
+    for enum-typed fields under python-mode validation - so schema-valid values like
+    ``"fade"`` or ``{"type": "preset", "preset": "4:3"}`` were rejected with a raw pydantic
+    "Input should be an instance of ..." error before ever reaching Office's own handler.
+    """
+    mcp, _ = office
+    async with Client(mcp) as client:
+        created = await client.call_tool(
+            "presentation_create",
+            {
+                "name": "Nested enums",
+                "size": {"type": "preset", "preset": "4:3"},
+                "slides": [
+                    {
+                        "name": "S1",
+                        "html": "<div>x</div>",
+                        "transition": "fade",
+                        "size": {"type": "custom", "width_in": 5, "height_in": 5},
+                    }
+                ],
+            },
+        )
+        assert not created.is_error, created.content
+        assert created.structured_content
+        pid = str(created.structured_content["presentation_id"])
+
+        added = await client.call_tool(
+            "slide_add",
+            {
+                "presentation_id": pid,
+                "slides": [{"name": "S2", "html": "<div>y</div>", "transition": "wipe"}],
+                "position": {"type": "start"},
+            },
+        )
+        assert not added.is_error, added.content
+
+        # A genuinely invalid enum value must still be rejected (this is a distinct,
+        # pre-existing SDK-level error-taxonomy nuance for malformed enum *values* -
+        # not the "valid values wrongly rejected" bug this test targets - so it is only
+        # asserted to still fail, not asserted to carry Office's own error formatting).
+        malformed = await client.call_tool(
+            "presentation_create",
+            {
+                "name": "Bad transition",
+                "slides": [
+                    {"name": "S", "html": "<p>x</p>", "transition": "not-a-real-transition"}
+                ],
+            },
+        )
+        assert malformed.is_error
+        assert isinstance(malformed.content[0], types.TextContent)
+
+
+async def test_canonical_preview_resource_is_paginated_and_bounded(
+    office: tuple[MCPServer[Any], OfficeRuntime],
+) -> None:
+    """The canonical preview resource must never stitch every contact sheet into one
+    unbounded bitmap - each page has to stay individually bounded, with out-of-range
+    pages rejected rather than silently clamped or omitted without a signal."""
+    mcp, runtime = office
+    created = await runtime.service.create(
+        LOCAL_SCOPE,
+        PresentationCreateArgs(
+            name="Large deck",
+            slides=[
+                NewSlide(name=f"Slide {index}", html="<section><h1>x</h1></section>")
+                for index in range(35)
+            ],
+        ),
+    )
+    pid = created.presentation_id
+    async with Client(mcp) as client:
+        root = await client.read_resource(f"office://presentations/{pid}")
+        assert isinstance(root.contents[0], types.TextResourceContents)
+        root_payload = json.loads(root.contents[0].text)
+        assert root_payload["preview_page_count"] == 2
+
+        page1 = await client.read_resource(f"office://presentations/{pid}/preview?page=1")
+        assert isinstance(page1.contents[0], types.BlobResourceContents)
+        page2 = await client.read_resource(f"office://presentations/{pid}/preview?page=2")
+        assert isinstance(page2.contents[0], types.BlobResourceContents)
+        # Two independently-bounded contact sheets, never one bitmap combining both.
+        assert page1.contents[0].blob != page2.contents[0].blob
+
+        # Each page must stay within one bounded contact sheet's dimensions - never
+        # grow with deck size the way stitching every sheet into one bitmap would.
+        for content in (page1.contents[0], page2.contents[0]):
+            image = Image.open(io.BytesIO(base64.b64decode(content.blob)))
+            assert image.width <= 4000
+            assert image.height <= 4000
+            assert image.width * image.height <= 20_000_000
+
+        with pytest.raises(MCPError):
+            await client.read_resource(f"office://presentations/{pid}/preview?page=3")
 
 
 async def test_supported_legacy_client_can_discover_and_call_tools(

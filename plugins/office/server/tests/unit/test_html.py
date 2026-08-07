@@ -1,7 +1,7 @@
 import pytest
 from bs4 import BeautifulSoup
 
-from office_mcp.domain.html import parse_styles, sanitize_fragment, select_element
+from office_mcp.domain.html import parse_styles, sanitize_fragment, select_element, visible_text
 from office_mcp.errors import ErrorCode, OfficeError
 from office_mcp.models.element import ElementByName
 
@@ -61,6 +61,34 @@ def test_exactly_one_root_is_enforced() -> None:
         sanitize_fragment("<p>a</p><p>b</p>", exactly_one_root=True)
 
 
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<p>kept</p>TRAILING-VISIBLE-TEXT",
+        "LEADING-VISIBLE-TEXT<p>kept</p>",
+        "<p>a</p>BETWEEN<p>b</p>",
+        "<!-- a stray comment --><p>kept</p>",
+    ],
+)
+def test_stray_sibling_text_is_rejected_not_silently_dropped(html: str) -> None:
+    with pytest.raises(OfficeError) as error:
+        sanitize_fragment(html)
+    assert error.value.code is ErrorCode.INVALID_HTML
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        "  <p>kept</p>  ",
+        "\n<p>kept</p>\n",
+        "<p>a</p> <p>b</p>",
+    ],
+)
+def test_insignificant_whitespace_around_roots_is_still_accepted(html: str) -> None:
+    result, _ = sanitize_fragment(html)
+    assert "kept" in result or ("a</p>" in result and "b</p>" in result)
+
+
 def test_only_closed_document_assets_and_safe_links_are_allowed() -> None:
     result, _ = sanitize_fragment(
         '<section><img src="data:image/png;base64,'
@@ -92,3 +120,38 @@ def test_slide_html_byte_limit_is_enforced() -> None:
     with pytest.raises(OfficeError) as error:
         sanitize_fragment("<p>too large</p>", max_bytes=4)
     assert error.value.code is ErrorCode.RESOURCE_TOO_LARGE
+
+
+def test_visible_text_excludes_display_none() -> None:
+    text = visible_text('<div>Visible</div><div style="display:none">Hidden</div>')
+    assert "Visible" in text
+    assert "Hidden" not in text
+
+
+def test_visible_text_excludes_visibility_hidden() -> None:
+    text = visible_text('<div>Visible</div><div style="visibility:hidden">Hidden</div>')
+    assert "Visible" in text
+    assert "Hidden" not in text
+
+
+def test_visible_text_excludes_hidden_attribute() -> None:
+    text = visible_text("<div>Visible</div><div hidden>Hidden</div>")
+    assert "Visible" in text
+    assert "Hidden" not in text
+
+
+def test_visible_text_excludes_descendants_of_hidden_ancestor() -> None:
+    text = visible_text('<div style="display:none"><p>Outer</p><span>Inner</span></div>')
+    assert "Outer" not in text
+    assert "Inner" not in text
+
+
+def test_visible_text_still_returns_ordinary_visible_descendants() -> None:
+    text = visible_text(
+        '<section><h1>Title</h1><div style="display:none">Gone</div>'
+        "<p>Kept <b>nested</b> text</p></section>"
+    )
+    assert "Title" in text
+    assert "Kept" in text
+    assert "nested" in text
+    assert "Gone" not in text

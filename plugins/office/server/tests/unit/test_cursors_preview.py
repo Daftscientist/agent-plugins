@@ -7,7 +7,6 @@ import office_mcp.domain.preview as preview_module
 from office_mcp.domain.cursors import CursorCodec
 from office_mcp.domain.preview import auto_columns, contact_sheets
 from office_mcp.errors import OfficeError
-from office_mcp.mcp.resources import combine_contact_sheets
 from office_mcp.models.preview import PreviewLabels, PreviewQuality
 
 
@@ -117,12 +116,3 @@ def test_contact_sheet_labels_use_actual_deck_ordinals(
         2,
     )
     assert labels == ["10", "12"]
-
-
-def test_canonical_preview_combines_every_contact_sheet() -> None:
-    combined = Image.open(io.BytesIO(combine_contact_sheets([png("red"), png("blue")]))).convert(
-        "RGB"
-    )
-    assert combined.size == (160, 198)
-    assert combined.getpixel((80, 45)) == (255, 0, 0)
-    assert combined.getpixel((80, 153)) == (0, 0, 255)

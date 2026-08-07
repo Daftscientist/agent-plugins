@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import math
 import re
 from typing import cast
 
@@ -9,7 +10,7 @@ from bs4 import BeautifulSoup, Tag
 from bs4.element import NavigableString
 
 from office_mcp.config import OfficeConfig
-from office_mcp.constants import MAX_SLIDES
+from office_mcp.constants import MAX_CONTACT_SHEET_SLIDES, MAX_SLIDES
 from office_mcp.domain.cursors import CursorCodec
 from office_mcp.domain.html import (
     detach_domoxml_metadata,
@@ -292,6 +293,7 @@ class PresentationService:
             created_at=snapshot.created_at,
             updated_at=snapshot.updated_at,
             slide_count=len(snapshot.slides),
+            preview_page_count=math.ceil(len(snapshot.slides) / MAX_CONTACT_SHEET_SLIDES),
             slides=self._refs(snapshot) if args.detail is PresentationInspectDetail.OUTLINE else [],
         )
 

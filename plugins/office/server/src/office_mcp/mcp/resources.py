@@ -1,6 +1,5 @@
 """Office resource tree and true paginated presentation catalogue."""
 
-import io
 import json
 from typing import Any, Literal
 
@@ -8,11 +7,11 @@ from mcp.server import MCPServer
 from mcp.server.context import ServerRequestContext
 from mcp.server.mcpserver.context import Context
 from mcp_types import ListResourcesResult, PaginatedRequestParams, Resource
-from PIL import Image
 
 from office_mcp.constants import OFFICE_VERSION, PPTX_MIME, RESOURCE_PAGE_SIZE
 from office_mcp.domain.cursors import CursorCodec
 from office_mcp.domain.service import PresentationService
+from office_mcp.errors import ErrorCode, OfficeError
 from office_mcp.icons import (
     ELEMENT_ICONS,
     OFFICE_ICONS,
@@ -26,6 +25,7 @@ from office_mcp.models.presentation import (
     PresentationExportArgs,
     PresentationInspectArgs,
     PresentationInspectDetail,
+    RevisionRef,
 )
 from office_mcp.models.preview import (
     PresentationPreviewArgs,
@@ -42,26 +42,6 @@ def _json(value: Any) -> str:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-
-
-def combine_contact_sheets(images: list[bytes]) -> bytes:
-    """Expose every sheet through the singular canonical preview resource."""
-    if not images:
-        return b""
-    if len(images) == 1:
-        return images[0]
-    decoded = [Image.open(io.BytesIO(data)).convert("RGB") for data in images]
-    gutter = 18
-    width = max(image.width for image in decoded)
-    height = sum(image.height for image in decoded) + gutter * (len(decoded) - 1)
-    combined = Image.new("RGB", (width, height), "#e5e7eb")
-    y = 0
-    for image in decoded:
-        combined.paste(image, ((width - image.width) // 2, y))
-        y += image.height + gutter
-    output = io.BytesIO()
-    combined.save(output, format="PNG", optimize=True)
-    return output.getvalue()
 
 
 def register_resources(
@@ -159,9 +139,14 @@ def register_resources(
         )
 
     @mcp.resource(
-        "office://presentations/{presentation_id}/preview{?quality,labels,columns}",
+        "office://presentations/{presentation_id}/preview{?quality,labels,columns,page}",
         name="Presentation preview",
         title="Presentation preview",
+        description=(
+            "One bounded contact-sheet page (up to 30 slides). Decks that need more than "
+            "one page expose them at the same URI with a higher '?page=' value; read the "
+            "presentation root resource's preview_page_count for the total."
+        ),
         mime_type="image/png",
         icons=PREVIEW_ICONS,
     )
@@ -171,6 +156,7 @@ def register_resources(
         quality: str = "standard",
         labels: str = "number_and_name",
         columns: Literal[2, 3, 4, 5] | None = None,
+        page: int = 1,
     ) -> bytes:
         scope = await scopes.current()
         images, _ = await service.preview(
@@ -183,7 +169,15 @@ def register_resources(
                 columns=columns,
             ),
         )
-        return combine_contact_sheets(images)
+        # Each contact sheet is already individually bounded (<= 30 slides). Never
+        # stitch every sheet into one unbounded bitmap - a 500-slide deck would produce
+        # a multi-hundred-megapixel image - expose one bounded page per request instead.
+        if not images or page < 1 or page > len(images):
+            raise OfficeError(
+                ErrorCode.RENDER_FAILED,
+                f"preview page {page} does not exist; this presentation has {len(images)} page(s)",
+            )
+        return images[page - 1]
 
     @mcp.resource(
         "office://presentations/{presentation_id}/revisions/{revision_id}",
@@ -193,8 +187,9 @@ def register_resources(
         icons=PRESENTATION_ICONS,
     )
     async def revision_metadata(presentation_id: str, revision_id: str, ctx: Context) -> str:
+        ref = RevisionRef(presentation_id=presentation_id, revision_id=revision_id)
         scope = await scopes.current()
-        snapshot = await store.get(scope, presentation_id, revision_id)
+        snapshot = await store.get(scope, ref.presentation_id, ref.revision_id)
         return _json(
             {
                 "presentation_id": snapshot.presentation_id,

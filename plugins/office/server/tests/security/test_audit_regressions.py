@@ -1,3 +1,5 @@
+import http.server
+import threading
 from datetime import datetime
 
 import pytest
@@ -15,6 +17,7 @@ from office_mcp.models.presentation import (
     PresentationSearchArgs,
     PresentationUpdateArgs,
 )
+from office_mcp.models.preview import PresentationPreviewArgs
 from office_mcp.models.slide import SlideInspectArgs, SlideInspectDetail, SlideUpdateArgs
 from office_mcp.storage.protocols import LOCAL_SCOPE
 
@@ -116,3 +119,53 @@ async def test_empty_inner_html_removes_all_children_without_inventing_markup(
     section = soup.find("section")
     assert isinstance(section, Tag)
     assert not section.contents
+
+
+async def test_render_never_reaches_the_network_even_through_a_sanitizer_gap(
+    office: tuple[MCPServer[object], OfficeRuntime],
+) -> None:
+    """The HTML sanitizer's URL-attribute allowlist is necessarily incomplete (legacy
+    `background=` isn't in it, unlike `src`/`href`), so the renderer itself must be the
+    backstop: even HTML that passes sanitization untouched must never let Office's
+    Chromium-based renderer make a real network request."""
+    received: list[str] = []
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            received.append(self.path)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _, runtime = office
+        target = f"http://127.0.0.1:{server.server_address[1]}/pixel.png"
+        html = f'<table background="{target}"><tr><td>legacy attr</td></tr></table>'
+        created = await runtime.service.create(
+            LOCAL_SCOPE,
+            PresentationCreateArgs(name="SSRF probe", slides=[NewSlide(name="S", html=html)]),
+        )
+        source = await runtime.service.slide_inspect(
+            LOCAL_SCOPE,
+            SlideInspectArgs(
+                presentation_id=created.presentation_id,
+                slide_id=created.slides[0].slide_id,
+                detail=SlideInspectDetail.SOURCE,
+            ),
+        )
+        # The gap: sanitization leaves `background=` untouched.
+        assert "background=" in (source.html or "")
+        await runtime.service.preview(
+            LOCAL_SCOPE, PresentationPreviewArgs(presentation_id=created.presentation_id)
+        )
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+    assert received == []

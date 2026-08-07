@@ -4,6 +4,8 @@ import base64
 import inspect
 import json
 import logging
+import types
+import typing
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Annotated, Any, cast
@@ -11,7 +13,7 @@ from typing import Annotated, Any, cast
 from mcp.server import MCPServer
 from mcp.server.mcpserver.context import Context
 from mcp_types import CallToolResult, Icon, ImageContent, ResourceLink, TextContent, ToolAnnotations
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from pydantic_core import PydanticUndefined
 
 from office_mcp.domain.service import PresentationService
@@ -118,10 +120,83 @@ async def _notifications(ctx: Context, name: str, args: BaseModel, result: Any) 
             await ctx.notify_resource_updated(f"{base}/slides/{direct_slide}/elements/{element_id}")
 
 
+_lax_model_cache: dict[int, type[BaseModel]] = {}
+
+
+def _lax_type(annotation: Any) -> Any:
+    """Recursively substitute strict nested models with schema-identical lax mirrors.
+
+    The MCP SDK builds its own transient argument model from a tool's flat function
+    signature and validates raw JSON arguments against it via plain ``model_validate()``
+    (python mode) *before* our handler ever runs its own ``model_validate_json`` pass
+    below. Pydantic's strict mode requires literal enum instances for enum-typed fields
+    under python-mode validation, so a perfectly valid wire value like
+    ``slides[0].transition: "fade"`` gets rejected by the SDK with a raw pydantic error,
+    never reaching Office's own error taxonomy. The substitution here only affects what
+    the SDK validates as a pre-flight gate - the handler re-derives and re-validates the
+    real arguments from the untouched raw request JSON via the original strict models,
+    so no actual scalar-coercion leniency reaches domain code.
+    """
+    origin = typing.get_origin(annotation)
+    if origin is Annotated:
+        base, *metadata = typing.get_args(annotation)
+        lax_base = _lax_type(base)
+        return annotation if lax_base is base else Annotated[(lax_base, *metadata)]
+    if origin is typing.Union or origin is types.UnionType:
+        args = typing.get_args(annotation)
+        lax_args: list[Any] = [_lax_type(arg) for arg in args]
+        if lax_args == list(args):
+            return annotation
+        if origin is types.UnionType:
+            result: Any = lax_args[0]
+            for arg in lax_args[1:]:
+                result = result | arg
+            return result
+        return typing.Union[tuple(lax_args)]  # noqa: UP007 - runtime union from a dynamic tuple
+    if origin is not None:
+        args = typing.get_args(annotation)
+        if not args:
+            return annotation
+        lax_args = [_lax_type(arg) for arg in args]
+        if lax_args == list(args):
+            return annotation
+        return origin[tuple(lax_args) if len(lax_args) > 1 else lax_args[0]]
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return _lax_model(annotation)
+    return annotation  # pyright: ignore[reportUnknownVariableType]
+
+
+def _lax_model(model_cls: type[BaseModel]) -> type[BaseModel]:
+    cached = _lax_model_cache.get(id(model_cls))
+    if cached is not None:
+        return cached
+    if not model_cls.model_config.get("strict"):
+        _lax_model_cache[id(model_cls)] = model_cls
+        return model_cls
+    _lax_model_cache[id(model_cls)] = model_cls  # guard against self-referential models
+    overrides: dict[str, Any] = {}
+    for field_name, field in model_cls.model_fields.items():
+        original = field.rebuild_annotation()
+        lax_annotation = _lax_type(original)
+        if lax_annotation is not original:
+            overrides[field_name] = (lax_annotation, field)
+    mirror: type[BaseModel] = create_model(
+        model_cls.__name__,
+        __base__=model_cls,
+        __module__=model_cls.__module__,
+        **overrides,
+    )
+    mirror.__qualname__ = model_cls.__qualname__
+    mirror.model_config = cast(ConfigDict, {**model_cls.model_config, "strict": False})
+    mirror.model_rebuild(force=True)
+    _lax_model_cache[id(model_cls)] = mirror
+    return mirror
+
+
 def _model_signature(model: type[BaseModel], return_annotation: Any) -> inspect.Signature:
     parameters: list[inspect.Parameter] = []
     for name, field in model.model_fields.items():
-        annotation = field.rebuild_annotation()
+        annotation = _lax_type(field.rebuild_annotation())
         if field.discriminator or field.description:
             annotation = Annotated[
                 annotation,

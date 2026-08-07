@@ -176,6 +176,7 @@ class PresentationInspectResult(StrictModel):
     created_at: datetime
     updated_at: datetime
     slide_count: int
+    preview_page_count: int
     slides: list[SlideRef]
 
 
@@ -273,3 +274,8 @@ class PresentationDeleteArgs(StrictModel):
 class PresentationDeleteResult(StrictModel):
     presentation_id: PresentationId
     deleted: Literal[True] = True
+
+
+class RevisionRef(StrictModel):
+    presentation_id: PresentationId
+    revision_id: RevisionId
