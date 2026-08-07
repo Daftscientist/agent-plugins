@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "office",
+  "version": "0.1.0",
+  "description": "Create, inspect, edit, preview, validate, and export editable Microsoft Office presentations. Initial support focuses on PowerPoint through domOXML.",
+  "author": {"name": "Daftscientist"},
+  "repository": "https://github.com/Daftscientist/agent-plugins",
+  "license": "MIT",
+  "keywords": ["office", "powerpoint", "pptx", "presentation", "slides", "domoxml", "mcp"]
+}

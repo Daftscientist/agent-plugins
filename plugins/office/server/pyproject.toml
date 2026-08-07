@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.29"]
+build-backend = "hatchling.build"
+
+[project]
+name = "office-mcp"
+version = "0.1.0"
+description = "Typed MCP server for editable Office presentations"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+  "mcp==2.0.0",
+  "domoxml @ git+https://github.com/Daftscientist/domOXML.git@428eb015470e9893a53a9661b4343b319378284e",
+  "pydantic>=2.13",
+  "beautifulsoup4>=4.14",
+  "tinycss2>=1.5",
+  "httpx>=0.28",
+  "pillow>=12.2",
+  "python-pptx>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "jsonschema>=4.26",
+  "pyright==1.1.409",
+  "pytest==9.0.3",
+  "pytest-asyncio==1.4.0",
+  "pyyaml>=6.0",
+  "ruff==0.15.15",
+]
+
+[project.scripts]
+office-mcp = "office_mcp.__main__:main"
+office-docs = "office_mcp.generate_docs:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/office_mcp"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
+reportUnusedFunction = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: requires Chromium"]

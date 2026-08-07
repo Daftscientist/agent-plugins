@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "office": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--project", "${PLUGIN_ROOT}/server", "python", "-m", "office_mcp"],
+      "cwd": "${PLUGIN_ROOT}",
+      "env": {"OFFICE_DATA_DIR": "${PLUGIN_DATA}/office"}
+    }
+  }
+}

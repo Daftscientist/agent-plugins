@@ -1,0 +1,17 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  office:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/office/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --extra dev
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run pytest
