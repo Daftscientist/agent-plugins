@@ -17,6 +17,7 @@ from office_mcp.models.element import ElementByName
         "<link rel='preload' href='https://example.com/x'>",
         "<img src='https://example.com/x.png'>",
         "<img srcset='https://example.com/x.png 1x'>",
+        "<img src='data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='>",
         '<div style="background-image:u\\72l(https://example.com/x.png)">x</div>',
     ],
 )
@@ -28,9 +29,11 @@ def test_active_html_is_rejected(html: str) -> None:
 
 def test_server_replaces_spoofed_ids_and_strips_classes() -> None:
     result, assigned = sanitize_fragment(
-        '<section data-office-id="el_attacker" class="styled"><h1>x</h1></section>'
+        '<section data-office-id="el_attacker" data-domoxml-preserved-payload="attacker" '
+        'class="styled"><h1>x</h1></section>'
     )
     assert "el_attacker" not in result
+    assert "data-domoxml" not in result
     assert "class=" not in result
     assert len(assigned) == 2
     assert all(identifier in result for identifier in assigned)
@@ -58,7 +61,9 @@ def test_exactly_one_root_is_enforced() -> None:
 
 def test_only_closed_document_assets_and_safe_links_are_allowed() -> None:
     result, _ = sanitize_fragment(
-        '<section><img src="data:image/png;base64,iVBORw0KGgo=">'
+        '<section><img src="data:image/png;base64,'
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/"
+        'pLvAAAAAElFTkSuQmCC">'
         '<a href="https://example.com/docs">docs</a><a href="#local">local</a></section>'
     )
     assert "data:image/png" in result and "https://example.com/docs" in result
@@ -71,6 +76,14 @@ def test_internal_id_preservation_is_private_strict_and_unique() -> None:
     duplicate = original.replace(assigned[1], assigned[0])
     with pytest.raises(OfficeError):
         sanitize_fragment(duplicate, _preserve_office_ids=True)
+
+
+def test_model_facing_html_hides_domoxml_preservation_payloads() -> None:
+    from office_mcp.domain.html import model_facing_html
+
+    source = '<div data-office-id="el_12345678" data-domoxml-text-payload="secret">x</div>'
+    assert "data-domoxml" not in model_facing_html(source)
+    assert "el_12345678" in model_facing_html(source)
 
 
 def test_slide_html_byte_limit_is_enforced() -> None:

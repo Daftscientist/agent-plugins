@@ -4,6 +4,8 @@ from pathlib import Path
 
 import jsonschema
 import yaml
+from mcp import Client
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from office_mcp.generate_docs import generate
 
@@ -103,3 +105,26 @@ def test_plugin_paths_are_self_contained() -> None:
 
 async def test_generated_api_reference_matches_live_registry() -> None:
     assert (PLUGIN_ROOT / "API_REFERENCE.md").read_text() == await generate()
+
+
+async def test_mcp_manifest_launcher_connects_over_real_stdio(tmp_path: Path) -> None:
+    manifest = json.loads((PLUGIN_ROOT / "mcp.json").read_text())["mcpServers"]["office"]
+    substitutions = {
+        "${PLUGIN_ROOT}": str(PLUGIN_ROOT),
+        "${PLUGIN_DATA}": str(tmp_path),
+    }
+
+    def expand(value: str) -> str:
+        for variable, replacement in substitutions.items():
+            value = value.replace(variable, replacement)
+        return value
+
+    params = StdioServerParameters(
+        command=manifest["command"],
+        args=[expand(value) for value in manifest["args"]],
+        cwd=expand(manifest["cwd"]),
+        env={key: expand(value) for key, value in manifest.get("env", {}).items()},
+    )
+    async with Client(stdio_client(params)) as client:
+        assert client.server_info and client.server_info.name == "Office"
+        assert len((await client.list_tools()).tools) == 20

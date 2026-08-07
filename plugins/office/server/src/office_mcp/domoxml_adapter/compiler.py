@@ -4,7 +4,9 @@ import asyncio
 import base64
 import io
 import mimetypes
+import re
 from dataclasses import dataclass
+from typing import cast
 
 import tinycss2
 from bs4 import BeautifulSoup, Tag
@@ -25,12 +27,18 @@ from pptx import Presentation as PptxPresentation
 from office_mcp.domain.html import parse_styles, sanitize_fragment, serialize_styles
 from office_mcp.domain.state import PresentationSnapshot, StoredSlide
 from office_mcp.errors import ErrorCode, OfficeError
-from office_mcp.models.common import CustomSlideSize, PresetSlideSize, SlideSize
+from office_mcp.models.common import (
+    CustomSlideSize,
+    PresetSlideSize,
+    SlideSize,
+    SlideSizePreset,
+)
 
 
 @dataclass(frozen=True)
 class ImportedPresentation:
     slides: list[StoredSlide]
+    size: SlideSize
     warnings: list[dict[str, object]]
     preservation: list[dict[str, object]]
     coverage: list[dict[str, object]]
@@ -41,6 +49,23 @@ def _size(size: SlideSize):
         return DomSlideSize(size.preset.value)
     assert isinstance(size, CustomSlideSize)
     return CustomSize(width_in=size.width_in, height_in=size.height_in)
+
+
+def _model_size(width_px: int, height_px: int) -> SlideSize:
+    presets = {
+        (1280, 720): SlideSizePreset.WIDE_16_9,
+        (960, 720): SlideSizePreset.STANDARD_4_3,
+        (960, 600): SlideSizePreset.WIDE_16_10,
+    }
+    preset = presets.get((width_px, height_px))
+    if preset:
+        return PresetSlideSize(preset=preset)
+    return CustomSlideSize(width_in=round(width_px / 96, 4), height_in=round(height_px / 96, 4))
+
+
+def _slide_number(value: str) -> int | None:
+    match = re.search(r"(?:^|/)slide(\d+)\.xml", value, re.IGNORECASE)
+    return int(match.group(1)) if match else None
 
 
 def _inline_css(html: str, css: str) -> str:
@@ -151,12 +176,17 @@ class DomOXMLAdapter:
             )
             for asset in imported.assets
         }
+        deck_size: SlideSize = (
+            _model_size(imported.slides[0].width_px, imported.slides[0].height_px)
+            if imported.slides
+            else PresetSlideSize(preset=SlideSizePreset.WIDE_16_9)
+        )
         slides: list[StoredSlide] = []
         for index, source in enumerate(imported.slides, start=1):
             html = _inline_css(source.html, imported.css)
             for path, (mime_type, encoded) in assets.items():
                 html = html.replace(path, f"data:{mime_type};base64,{encoded}")
-            normalized, _ = sanitize_fragment(html)
+            normalized, _ = sanitize_fragment(html, _preserve_domoxml_metadata=True)
             soup = BeautifulSoup(normalized, "html.parser")
             title = soup.find(["h1", "h2", "h3", "title"])
             name = (
@@ -164,15 +194,33 @@ class DomOXMLAdapter:
                 if isinstance(title, Tag)
                 else f"Slide {index}"
             )
-            slides.append(StoredSlide(slide_id="", name=name or f"Slide {index}", html=normalized))
+            slide_size = _model_size(source.width_px, source.height_px)
+            slides.append(
+                StoredSlide(
+                    slide_id="",
+                    name=name or f"Slide {index}",
+                    html=normalized,
+                    size=slide_size if slide_size != deck_size else None,
+                )
+            )
         warnings: list[dict[str, object]] = [
             {
                 "code": "DOMOXML_WARNING",
                 "message": item.message,
+                "slide_number": _slide_number(item.element),
                 "element": item.element or None,
             }
             for item in imported.warnings
         ]
         preservation = [item.model_dump(mode="json") for item in imported.preserved]
-        coverage = [item.model_dump(mode="json") for item in imported.coverage.items]
-        return ImportedPresentation(slides, warnings, preservation, coverage)
+        coverage: list[dict[str, object]] = [
+            cast(
+                dict[str, object],
+                {
+                    **item.model_dump(mode="json"),
+                    "slide_number": _slide_number(item.element),
+                },
+            )
+            for item in imported.coverage.items
+        ]
+        return ImportedPresentation(slides, deck_size, warnings, preservation, coverage)

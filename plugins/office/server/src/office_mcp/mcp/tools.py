@@ -11,7 +11,7 @@ from typing import Annotated, Any, cast
 from mcp.server import MCPServer
 from mcp.server.mcpserver.context import Context
 from mcp_types import CallToolResult, Icon, ImageContent, ResourceLink, TextContent, ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from pydantic_core import PydanticUndefined
 
 from office_mcp.domain.service import PresentationService
@@ -89,8 +89,18 @@ async def _notifications(ctx: Context, name: str, args: BaseModel, result: Any) 
     base = f"office://presentations/{presentation}"
     for uri in (base, f"{base}/outline", f"{base}/validation", f"{base}/preview"):
         await ctx.notify_resource_updated(uri)
-    slide = getattr(args, "slide_id", None)
-    if slide:
+    slide_ids: list[str] = []
+    direct_slide = getattr(args, "slide_id", None)
+    if direct_slide:
+        slide_ids.append(str(direct_slide))
+    slide_ids.extend(str(item) for item in getattr(args, "slide_ids", []) or [])
+    if name == "slide_add":
+        slide_ids.extend(str(item.slide_id) for item in result.added)
+    elif name == "slide_duplicate":
+        slide_ids.append(str(result.slide.slide_id))
+    elif name == "slide_reorder":
+        slide_ids.extend(str(item.slide_id) for item in result.slides)
+    for slide in dict.fromkeys(slide_ids):
         slide_base = f"{base}/slides/{slide}"
         for uri in (slide_base, f"{slide_base}/source", f"{slide_base}/preview"):
             await ctx.notify_resource_updated(uri)
@@ -101,8 +111,11 @@ async def _notifications(ctx: Context, name: str, args: BaseModel, result: Any) 
         or getattr(result, "deleted_element_ids", None)
         or [],
     )
-    for element_id in element_ids:
-        await ctx.notify_resource_updated(f"{base}/slides/{slide}/elements/{element_id}")
+    if name == "element_add":
+        element_ids.extend(str(item.element_id) for item in result.roots)
+    if direct_slide:
+        for element_id in element_ids:
+            await ctx.notify_resource_updated(f"{base}/slides/{direct_slide}/elements/{element_id}")
 
 
 def _model_signature(model: type[BaseModel], return_annotation: Any) -> inspect.Signature:
@@ -173,7 +186,7 @@ def register_tools(
                 read_only_hint=False,
                 destructive_hint=False,
                 idempotent_hint=False,
-                open_world_hint=True,
+                open_world_hint=service.config.allow_https_input,
             ),
             PRESENTATION_ICONS,
         ),
@@ -433,12 +446,19 @@ def register_tools(
             ctx: Context = kwargs.pop("ctx")
             raw_params: Mapping[str, Any] = ctx.request_context.params or {}
             raw_arguments = cast(dict[str, Any], raw_params.get("arguments", {}))
+            # MCP arguments arrive as JSON. Pydantic's strict Python mode
+            # rejects the string representation of enums, while strict JSON
+            # mode accepts wire values and still prevents scalar coercion.
             try:
-                # MCP arguments arrive as JSON.  Pydantic's strict Python mode
-                # intentionally rejects the string representation of enums,
-                # while strict JSON mode accepts the wire representation and
-                # still prevents scalar coercion.
                 args = args_model.model_validate_json(json.dumps(raw_arguments))
+            except ValidationError as exc:
+                first = exc.errors(include_url=False)[0]
+                location = ".".join(str(item) for item in first["loc"]) or "arguments"
+                raise OfficeError(
+                    ErrorCode.INVALID_PRESENTATION_SOURCE,
+                    f"invalid {name} argument {location}: {first['msg']}",
+                ) from exc
+            try:
                 scope = await scopes.current()
                 expensive = name in {
                     "presentation_open",

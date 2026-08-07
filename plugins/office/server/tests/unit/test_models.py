@@ -54,6 +54,8 @@ def test_element_mutation_contracts() -> None:
     with pytest.raises(ValidationError):
         AttributeMutation(set={"data-office-id": element_id()})
     with pytest.raises(ValidationError):
+        AttributeMutation(set={"data-domoxml-preserved-payload": "attacker"})
+    with pytest.raises(ValidationError):
         AttributeMutation(set={"onclick": "bad()"})
 
 

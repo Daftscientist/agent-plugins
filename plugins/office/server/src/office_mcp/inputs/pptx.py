@@ -3,7 +3,7 @@
 import io
 import posixpath
 import zipfile
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree
 
 from defusedxml.ElementTree import fromstring
@@ -101,9 +101,34 @@ def validate_pptx(data: bytes, config: OfficeConfig) -> None:
                     part = fromstring(payload)
                     if name.endswith(".rels"):
                         for relationship in part:
-                            if relationship.attrib.get("TargetMode") != "External":
-                                continue
                             target = relationship.attrib.get("Target", "")
+                            if relationship.attrib.get("TargetMode") != "External":
+                                parsed = urlparse(target)
+                                if (
+                                    parsed.scheme
+                                    or parsed.netloc
+                                    or "\\" in target
+                                    or "\x00" in target
+                                ):
+                                    raise OfficeError(
+                                        ErrorCode.INVALID_PPTX,
+                                        "PPTX contains an unsafe internal relationship",
+                                    )
+                                if "/_rels/" in name:
+                                    prefix, relation_name = name.rsplit("/_rels/", 1)
+                                    source_part = f"{prefix}/{relation_name.removesuffix('.rels')}"
+                                    base = posixpath.dirname(source_part)
+                                else:
+                                    base = ""
+                                resolved = posixpath.normpath(
+                                    posixpath.join(base, unquote(parsed.path))
+                                )
+                                if resolved.startswith("../") or resolved.startswith("/"):
+                                    raise OfficeError(
+                                        ErrorCode.INVALID_PPTX,
+                                        "PPTX relationship escapes the package namespace",
+                                    )
+                                continue
                             parsed = urlparse(target)
                             if parsed.scheme.lower() not in {"http", "https", "mailto"}:
                                 raise OfficeError(

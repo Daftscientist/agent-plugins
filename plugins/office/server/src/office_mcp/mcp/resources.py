@@ -269,16 +269,43 @@ def register_resources(
     ) -> ListResourcesResult:
         scope = await scopes.current()
         snapshots = await store.list_current(scope)
-        offset = 0
+        after_updated: str | None = None
+        after_id: str | None = None
         if params and params.cursor:
             payload = cursor.decode(params.cursor)
             if payload.get("scope") != scope.key or payload.get("kind") != "resources":
                 from office_mcp.errors import ErrorCode, OfficeError
 
                 raise OfficeError(ErrorCode.ACCESS_DENIED, "resource cursor is invalid")
-            offset = int(payload["offset"])
-        page = snapshots[offset : offset + RESOURCE_PAGE_SIZE]
-        resources = [
+            after_updated = str(payload["after_updated"])
+            after_id = str(payload["after_id"])
+        if after_updated is not None and after_id is not None:
+            snapshots = [
+                snapshot
+                for snapshot in snapshots
+                if snapshot.updated_at.isoformat() < after_updated
+                or (
+                    snapshot.updated_at.isoformat() == after_updated
+                    and snapshot.presentation_id > after_id
+                )
+            ]
+        include_capabilities = after_updated is None
+        capacity = RESOURCE_PAGE_SIZE - 1 if include_capabilities else RESOURCE_PAGE_SIZE
+        page = snapshots[:capacity]
+        resources = (
+            [
+                Resource(
+                    name="Office capabilities",
+                    title="Office capabilities",
+                    uri="office://capabilities",
+                    description="Machine-readable Office/domOXML capabilities and limits.",
+                    mime_type="application/json",
+                    icons=OFFICE_ICONS,
+                )
+            ]
+            if include_capabilities
+            else []
+        ) + [
             Resource(
                 name=snapshot.name,
                 title=snapshot.name,
@@ -290,9 +317,15 @@ def register_resources(
             for snapshot in page
         ]
         next_cursor = None
-        if offset + RESOURCE_PAGE_SIZE < len(snapshots):
+        if len(snapshots) > capacity:
+            last = page[-1]
             next_cursor = cursor.encode(
-                {"scope": scope.key, "kind": "resources", "offset": offset + RESOURCE_PAGE_SIZE}
+                {
+                    "scope": scope.key,
+                    "kind": "resources",
+                    "after_updated": last.updated_at.isoformat(),
+                    "after_id": last.presentation_id,
+                }
             )
         return ListResourcesResult(resources=resources, next_cursor=next_cursor)
 

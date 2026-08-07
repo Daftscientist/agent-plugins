@@ -63,7 +63,7 @@ def test_pptx_magic_content_type_and_zip_safety() -> None:
         validate_pptx(b"not a zip", config)
 
 
-def unsafe_relationship_package(target: str) -> bytes:
+def unsafe_relationship_package(target: str, target_mode: str = "External") -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as package:
         package.writestr(
@@ -80,7 +80,8 @@ def unsafe_relationship_package(target: str) -> bytes:
         package.writestr(
             "ppt/_rels/presentation.xml.rels",
             '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            f'<Relationship Id="rId1" Type="x" Target="{target}" TargetMode="External"/>'
+            f'<Relationship Id="rId1" Type="x" Target="{target}" '
+            f'TargetMode="{target_mode}"/>'
             "</Relationships>",
         )
     return buffer.getvalue()
@@ -92,6 +93,14 @@ def test_pptx_rejects_dangerous_external_relationships() -> None:
         validate_pptx(unsafe_relationship_package("file:///etc/passwd"), config)
     assert error.value.code is ErrorCode.INVALID_PPTX
     validate_pptx(unsafe_relationship_package("https://example.com"), config)
+
+
+def test_pptx_rejects_relationships_escaping_package_namespace() -> None:
+    with pytest.raises(OfficeError):
+        validate_pptx(
+            unsafe_relationship_package("../../../../etc/passwd", "Internal"),
+            OfficeConfig(data_dir=Path(".")),
+        )
 
 
 def test_pptx_rejects_duplicate_normalized_paths() -> None:

@@ -1,14 +1,18 @@
 """Safe inline-HTML policy, stable element identity, and DOM utilities."""
 
+import base64
+import binascii
+import io
 import re
 from collections.abc import Iterable
 from typing import Any, cast
-from urllib.parse import urlparse
+from urllib.parse import unquote_to_bytes, urlparse
 
 import tinycss2
 from bs4 import BeautifulSoup, Tag
+from PIL import Image
 
-from office_mcp.constants import MAX_HTML_BYTES
+from office_mcp.constants import MAX_HTML_BYTES, MAX_REMOTE_ASSET_BYTES
 from office_mcp.errors import ErrorCode, OfficeError
 from office_mcp.ids import element_id
 from office_mcp.models.element import ElementById, ElementByName, ElementSelector
@@ -29,29 +33,57 @@ ACTIVE_TAGS = {
 URL_ATTRS = {"href", "src", "srcset", "action", "formaction", "poster", "xlink:href"}
 CSS_PROPERTY = re.compile(r"^--?[a-zA-Z][a-zA-Z0-9-]*$|^[a-zA-Z][a-zA-Z0-9-]*$")
 OFFICE_ID = re.compile(r"^el_[A-Za-z0-9_-]{8,}$")
+MAX_IMAGE_PIXELS = 40_000_000
+MAX_IMAGE_DIMENSION = 10_000
+
+
+def _valid_data_image(value: str) -> bool:
+    try:
+        header, payload = value.split(",", 1)
+        mime_type = header[5:].split(";", 1)[0].lower()
+        expected = {
+            "image/png": "PNG",
+            "image/jpeg": "JPEG",
+            "image/gif": "GIF",
+            "image/webp": "WEBP",
+        }.get(mime_type)
+        if expected is None:
+            return False
+        data = (
+            base64.b64decode(payload, validate=True)
+            if ";base64" in header.lower()
+            else unquote_to_bytes(payload)
+        )
+        if not data or len(data) > MAX_REMOTE_ASSET_BYTES:
+            return False
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != expected:
+                return False
+            width, height = image.size
+            if (
+                width <= 0
+                or height <= 0
+                or width > MAX_IMAGE_DIMENSION
+                or height > MAX_IMAGE_DIMENSION
+                or width * height > MAX_IMAGE_PIXELS
+            ):
+                return False
+            image.verify()
+        return True
+    except (ValueError, binascii.Error, OSError, Image.DecompressionBombError):
+        return False
 
 
 def _unsafe_url(tag_name: str, attribute: str, value: str) -> bool:
-    stripped = re.sub(r"[\x00-\x20]+", "", value).lower()
+    stripped = re.sub(r"[\x00-\x20]+", "", value)
     if attribute == "srcset":
         return True
     if stripped.startswith("#"):
         return False
     parsed = urlparse(stripped)
     if attribute == "href" and tag_name == "a":
-        return parsed.scheme not in {"https", "mailto"}
-    return not (
-        parsed.scheme == "data"
-        and stripped.startswith(
-            (
-                "data:image/png",
-                "data:image/jpeg",
-                "data:image/gif",
-                "data:image/webp",
-                "data:image/svg+xml",
-            )
-        )
-    )
+        return parsed.scheme.lower() not in {"https", "mailto"}
+    return parsed.scheme.lower() != "data" or not _valid_data_image(stripped)
 
 
 def _css_urls(tokens: list[Any]) -> Iterable[str]:
@@ -83,19 +115,8 @@ def parse_styles(value: str) -> dict[str, str]:
         if not CSS_PROPERTY.fullmatch(name):
             raise OfficeError(ErrorCode.UNSUPPORTED_CSS, f"invalid CSS property {name!r}")
         for url in _css_urls(declaration.value):
-            normalized = re.sub(r"[\x00-\x20]+", "", url).lower()
-            if not (
-                normalized.startswith("#")
-                or normalized.startswith(
-                    (
-                        "data:image/png",
-                        "data:image/jpeg",
-                        "data:image/gif",
-                        "data:image/webp",
-                        "data:image/svg+xml",
-                    )
-                )
-            ):
+            normalized = re.sub(r"[\x00-\x20]+", "", url)
+            if not (normalized.startswith("#") or _valid_data_image(normalized)):
                 raise OfficeError(ErrorCode.UNSAFE_HTML, f"unsafe CSS URL in {name}")
         result[name] = rendered
     return result
@@ -111,6 +132,7 @@ def sanitize_fragment(
     exactly_one_root: bool = False,
     max_bytes: int = MAX_HTML_BYTES,
     _preserve_office_ids: bool = False,
+    _preserve_domoxml_metadata: bool = False,
 ) -> tuple[str, list[str]]:
     if len(html.encode("utf-8")) > max_bytes:
         raise OfficeError(ErrorCode.RESOURCE_TOO_LARGE, "slide HTML exceeds the byte limit")
@@ -137,6 +159,9 @@ def sanitize_fragment(
                     ErrorCode.UNSAFE_HTML, f"event-handler attribute {attr!r} is not allowed"
                 )
             if lowered == "data-office-id" and not _preserve_office_ids:
+                del tag.attrs[attr]
+                continue
+            if lowered.startswith("data-domoxml-") and not _preserve_domoxml_metadata:
                 del tag.attrs[attr]
                 continue
             if lowered == "data-office-id" and (
@@ -169,6 +194,26 @@ def remint_ids(html: str) -> str:
 
 def visible_text(html: str) -> str:
     return " ".join(BeautifulSoup(html, "html.parser").stripped_strings)
+
+
+def model_facing_html(html: str) -> str:
+    """Remove domOXML's private preservation payloads from model-visible source."""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup.find_all(True):
+        for attribute in list(tag.attrs):
+            if attribute.lower().startswith("data-domoxml-"):
+                del tag.attrs[attribute]
+    return str(soup)
+
+
+def detach_domoxml_metadata(tag: Tag) -> None:
+    """Invalidate stale imported semantic payloads on an edited node and its ancestors."""
+    current: Tag | None = tag
+    while current is not None:
+        for attribute in list(current.attrs):
+            if attribute.lower().startswith("data-domoxml-"):
+                del current.attrs[attribute]
+        current = current.parent if isinstance(current.parent, Tag) else None
 
 
 def element_tags(html: str) -> list[Tag]:

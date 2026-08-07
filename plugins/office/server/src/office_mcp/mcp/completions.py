@@ -26,12 +26,12 @@ def register_completions(
         partial = argument.value.casefold()
         snapshots = await store.list_current(scope)
         if argument.name == "presentation_id":
-            values = [
+            matches = [
                 f"{item.presentation_id} — {item.name}"
                 for item in snapshots
                 if partial in item.presentation_id.casefold() or partial in item.name.casefold()
-            ][:30]
-            return Completion(values=values, total=len(values), has_more=False)
+            ]
+            return Completion(values=matches[:30], total=len(matches), has_more=len(matches) > 30)
         resolved = context.arguments if context else {}
         presentation = resolved.get("presentation_id") if resolved else None
         if presentation:
@@ -41,12 +41,14 @@ def register_completions(
             except Exception:
                 return Completion(values=[], total=0, has_more=False)
             if argument.name == "slide_id":
-                values = [
+                matches = [
                     f"{slide.slide_id} — {slide.name}"
                     for slide in snapshot.slides
                     if partial in slide.slide_id.casefold() or partial in slide.name.casefold()
-                ][:30]
-                return Completion(values=values, total=len(values), has_more=False)
+                ]
+                return Completion(
+                    values=matches[:30], total=len(matches), has_more=len(matches) > 30
+                )
             slide_value = resolved.get("slide_id") if resolved else None
             if argument.name == "element_id" and slide_value:
                 slide_value = slide_value.split(" — ", 1)[0]
@@ -63,6 +65,6 @@ def register_completions(
                         if partial in display.casefold():
                             values.append(display)
                     return Completion(
-                        values=values[:30], total=min(len(values), 30), has_more=len(values) > 30
+                        values=values[:30], total=len(values), has_more=len(values) > 30
                     )
         return Completion(values=[], total=0, has_more=False)

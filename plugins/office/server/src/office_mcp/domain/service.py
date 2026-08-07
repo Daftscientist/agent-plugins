@@ -12,8 +12,10 @@ from office_mcp.config import OfficeConfig
 from office_mcp.constants import MAX_SLIDES
 from office_mcp.domain.cursors import CursorCodec
 from office_mcp.domain.html import (
+    detach_domoxml_metadata,
     direct_child_ids,
     element_tags,
+    model_facing_html,
     parse_styles,
     remint_ids,
     sanitize_fragment,
@@ -30,9 +32,7 @@ from office_mcp.inputs import validate_pptx
 from office_mcp.models.common import (
     Editability,
     PresentationTheme,
-    PresetSlideSize,
     Representation,
-    SlideSizePreset,
     SourceRetention,
 )
 from office_mcp.models.element import (
@@ -109,16 +109,18 @@ from office_mcp.models.validation import (
     ValidationDetail,
     ValidationWarning,
 )
-from office_mcp.outputs.local import OfficeResourceOutputSink
-from office_mcp.storage.protocols import InputResolver, PresentationStore, RequestScope
+from office_mcp.storage.protocols import InputResolver, OutputSink, PresentationStore, RequestScope
 
 
 class PresentationService:
+    _MAX_PREVIEW_CACHE_ENTRIES = 32
+    _MAX_VALIDATION_CACHE_ENTRIES = 256
+
     def __init__(
         self,
         store: PresentationStore,
         resolver: InputResolver,
-        output: OfficeResourceOutputSink,
+        output: OutputSink,
         adapter: DomOXMLAdapter,
         cursor: CursorCodec,
         config: OfficeConfig,
@@ -145,13 +147,19 @@ class PresentationService:
         ]
 
     def _sanitize(
-        self, html: str, *, exactly_one_root: bool = False, preserve_ids: bool = False
+        self,
+        html: str,
+        *,
+        exactly_one_root: bool = False,
+        preserve_ids: bool = False,
+        preserve_domoxml: bool = False,
     ) -> tuple[str, list[str]]:
         return sanitize_fragment(
             html,
             exactly_one_root=exactly_one_root,
             max_bytes=self.config.max_html_bytes,
             _preserve_office_ids=preserve_ids,
+            _preserve_domoxml_metadata=preserve_domoxml,
         )
 
     def _stored(self, new: NewSlide) -> StoredSlide:
@@ -224,13 +232,14 @@ class PresentationService:
             revision_id=revision_id(),
             name=args.name or fallback_name,
             description=args.description,
-            size=PresetSlideSize(preset=SlideSizePreset.WIDE_16_9),
+            size=imported.size,
             theme=PresentationTheme(),
             slides=imported.slides,
             created_at=now,
             updated_at=now,
             imported_pptx_b64=base64.b64encode(data).decode(),
             imported_preservation=imported.preservation,
+            imported_coverage=imported.coverage,
             import_warnings=imported.warnings,
         )
         await self.store.create(scope, snapshot)
@@ -398,7 +407,8 @@ class PresentationService:
                             {key: value for key, value in typed_values.items() if value is not None}
                         )
             snapshot.theme = PresentationTheme.model_validate(theme_data)
-        snapshot.content_changed_after_import = True
+        if {"size", "theme"} & args.model_fields_set:
+            snapshot.content_changed_after_import = True
         await self.store.commit(scope, snapshot, args.expected_revision)
         return MutationResult(
             presentation_id=snapshot.presentation_id,
@@ -468,7 +478,7 @@ class PresentationService:
                 for tag in tags
             ]
         elif args.detail is SlideInspectDetail.SOURCE:
-            html = slide.html
+            html = model_facing_html(slide.html)
         return SlideInspectResult(
             presentation_id=snapshot.presentation_id,
             revision=snapshot.revision_id,
@@ -488,7 +498,8 @@ class PresentationService:
             if args.html is None:
                 raise OfficeError(ErrorCode.INVALID_HTML, "slide HTML cannot be cleared")
             slide.html = self._sanitize(args.html)[0]
-        snapshot.content_changed_after_import = True
+        if {"transition", "size", "html"} & args.model_fields_set:
+            snapshot.content_changed_after_import = True
         await self.store.commit(scope, snapshot, args.expected_revision)
         return MutationResult(
             presentation_id=snapshot.presentation_id,
@@ -602,7 +613,7 @@ class PresentationService:
             text=tag.get_text(" ", strip=True) or None,
             attributes=attributes,
             styles=styles,
-            html=str(clone) if args.include_html and clone else None,
+            html=model_facing_html(str(clone)) if args.include_html and clone else None,
             child_ids=direct_child_ids(tag),
         )
 
@@ -627,7 +638,7 @@ class PresentationService:
         else:
             for root in roots:
                 relative.append(root)
-        slide.html = self._sanitize(str(soup), preserve_ids=True)[0]
+        slide.html = self._sanitize(str(soup), preserve_ids=True, preserve_domoxml=True)[0]
         snapshot.content_changed_after_import = True
         await self.store.commit(scope, snapshot, args.expected_revision)
         return ElementAddResult(
@@ -658,6 +669,7 @@ class PresentationService:
         for mutation in args.elements:
             tag = select_element(soup, mutation.element)
             stable_id = str(tag["data-office-id"])
+            detach_domoxml_metadata(tag)
             if "text" in mutation.model_fields_set:
                 tag.clear()
                 tag.append(NavigableString(mutation.text or ""))
@@ -691,7 +703,7 @@ class PresentationService:
                         raise OfficeError(ErrorCode.UNSAFE_HTML, f"unsafe URL in {name}")
                     tag[name] = value
             updated.append(stable_id)
-        slide.html = self._sanitize(str(soup), preserve_ids=True)[0]
+        slide.html = self._sanitize(str(soup), preserve_ids=True, preserve_domoxml=True)[0]
         snapshot.content_changed_after_import = True
         await self.store.commit(scope, snapshot, args.expected_revision)
         return ElementUpdateResult(
@@ -726,7 +738,7 @@ class PresentationService:
                 relative.insert(0, extracted)
             else:
                 relative.append(extracted)
-        slide.html = self._sanitize(str(soup), preserve_ids=True)[0]
+        slide.html = self._sanitize(str(soup), preserve_ids=True, preserve_domoxml=True)[0]
         snapshot.content_changed_after_import = True
         await self.store.commit(scope, snapshot, args.expected_revision)
         return ElementMoveResult(
@@ -753,7 +765,7 @@ class PresentationService:
             raise OfficeError(ErrorCode.INVALID_HTML, "cannot delete the sole slide root element")
         for tag in tags:
             tag.decompose()
-        slide.html = self._sanitize(str(soup), preserve_ids=True)[0]
+        slide.html = self._sanitize(str(soup), preserve_ids=True, preserve_domoxml=True)[0]
         snapshot.content_changed_after_import = True
         await self.store.commit(scope, snapshot, args.expected_revision)
         return ElementDeleteResult(
@@ -777,7 +789,49 @@ class PresentationService:
             return self._validation_cache[cache_key]
         coverage: list[CoverageItem] = []
         warnings: list[ValidationWarning] = []
-        for index in indices:
+        selected_numbers = {index + 1 for index in indices}
+        for warning in snapshot.import_warnings:
+            number_value = warning.get("slide_number")
+            number = int(number_value) if isinstance(number_value, int | str) else None
+            if number is not None and number not in selected_numbers:
+                continue
+            warnings.append(
+                ValidationWarning(
+                    code=str(warning.get("code", "DOMOXML_WARNING")),
+                    message=str(warning.get("message", "Imported source has fidelity debt")),
+                    slide_id=snapshot.slides[number - 1].slide_id if number else None,
+                    element=str(warning["element"]) if warning.get("element") else None,
+                )
+            )
+        use_reverse_coverage = bool(
+            snapshot.imported_pptx_b64
+            and not snapshot.content_changed_after_import
+            and snapshot.imported_coverage
+        )
+        if use_reverse_coverage:
+            for item in snapshot.imported_coverage:
+                number_value = item.get("slide_number")
+                if not isinstance(number_value, int) or number_value not in selected_numbers:
+                    continue
+                output_value = item.get("output_count", 0)
+                raster_value = item.get("raster_area_emu2", 0)
+                coverage.append(
+                    CoverageItem(
+                        slide_id=snapshot.slides[number_value - 1].slide_id,
+                        element=str(item.get("element", "imported element")),
+                        representation=Representation(str(item.get("representation", "failed"))),
+                        editability=Editability(str(item.get("editability", "none"))),
+                        source_retention=SourceRetention(str(item.get("source_retention", "lost"))),
+                        output_count=int(output_value)
+                        if isinstance(output_value, int | str)
+                        else 0,
+                        raster_area_emu2=int(raster_value)
+                        if isinstance(raster_value, int | str)
+                        else 0,
+                        reason=str(item.get("reason", "")),
+                    )
+                )
+        for index in [] if use_reverse_coverage else indices:
             slide = snapshot.slides[index]
             result = await self.adapter.validate(snapshot, {index})
             if result is None:
@@ -804,6 +858,36 @@ class PresentationService:
                 )
                 for item in result.warnings
             )
+        if snapshot.content_changed_after_import and snapshot.imported_preservation:
+            warnings.append(
+                ValidationWarning(
+                    code="PRESERVATION_DEBT",
+                    message=(
+                        "Imported source-only OOXML fragments cannot be reattached by the "
+                        "current domOXML public API after edits; inspect the affected slides."
+                    ),
+                )
+            )
+            for fragment in snapshot.imported_preservation:
+                part = str(fragment.get("part", ""))
+                match = re.search(r"(?:^|/)slide(\d+)\.xml", part, re.IGNORECASE)
+                if not match:
+                    continue
+                number = int(match.group(1))
+                if number not in selected_numbers:
+                    continue
+                coverage.append(
+                    CoverageItem(
+                        slide_id=snapshot.slides[number - 1].slide_id,
+                        element=str(fragment.get("owner_node_id") or part),
+                        representation=Representation.APPROXIMATED,
+                        editability=Editability.NONE,
+                        source_retention=SourceRetention.LOST,
+                        output_count=0,
+                        raster_area_emu2=0,
+                        reason="source-only OOXML preservation fragment is detached after edit",
+                    )
+                )
         failures = sum(item.representation is Representation.FAILED for item in coverage)
         count = len(coverage)
         native = sum(
@@ -836,6 +920,8 @@ class PresentationService:
             warnings=warnings,
             coverage=coverage if args.detail is ValidationDetail.FULL else None,
         )
+        if len(self._validation_cache) >= self._MAX_VALIDATION_CACHE_ENTRIES:
+            self._validation_cache.pop(next(iter(self._validation_cache)))
         self._validation_cache[cache_key] = result
         return result
 
@@ -843,7 +929,10 @@ class PresentationService:
         self, snapshot: PresentationSnapshot, selection: PreviewSelection
     ) -> list[int]:
         if isinstance(selection, PreviewAll):
-            return list(range(len(snapshot.slides)))
+            indices = list(range(len(snapshot.slides)))
+            if not indices:
+                raise OfficeError(ErrorCode.SLIDE_NOT_FOUND, "presentation has no slides")
+            return indices
         if isinstance(selection, PreviewRange):
             if selection.end > len(snapshot.slides):
                 raise OfficeError(
@@ -851,7 +940,12 @@ class PresentationService:
                 )
             return list(range(selection.start - 1, selection.end))
         assert isinstance(selection, PreviewSlides)
-        return [self._find_slide(snapshot, item)[0] for item in selection.slide_ids]
+        indices = [self._find_slide(snapshot, item)[0] for item in selection.slide_ids]
+        if len(set(indices)) != len(indices):
+            raise OfficeError(ErrorCode.SLIDE_NOT_FOUND, "duplicate preview slide IDs are invalid")
+        # domOXML's public indices API renders in deck order. Keep metadata in
+        # the same order so each image always maps to the correct stable ID.
+        return sorted(indices)
 
     async def preview(
         self, scope: RequestScope, args: PresentationPreviewArgs
@@ -912,6 +1006,8 @@ class PresentationService:
             layout=layout,
             images=descriptors,
         )
+        if len(self._preview_cache) >= self._MAX_PREVIEW_CACHE_ENTRIES:
+            self._preview_cache.pop(next(iter(self._preview_cache)))
         self._preview_cache[key] = (images, result)
         return images, result
 
@@ -960,4 +1056,7 @@ class PresentationService:
         self, scope: RequestScope, args: PresentationDeleteArgs
     ) -> PresentationDeleteResult:
         await self.store.delete(scope, args.presentation_id, args.expected_revision)
+        await self.output.delete_presentation(scope, args.presentation_id)
+        self._preview_cache.clear()
+        self._validation_cache.clear()
         return PresentationDeleteResult(presentation_id=args.presentation_id)

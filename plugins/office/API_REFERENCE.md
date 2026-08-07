@@ -673,7 +673,7 @@ Annotations:
 {
   "destructiveHint": false,
   "idempotentHint": false,
-  "openWorldHint": true,
+  "openWorldHint": false,
   "readOnlyHint": false,
   "title": null
 }

@@ -47,6 +47,8 @@ async def test_identity_tools_schemas_prompts_resources_and_completions(
         capabilities = await client.read_resource("office://capabilities")
         assert isinstance(capabilities.contents[0], types.TextResourceContents)
         assert "inline_css_only" in capabilities.contents[0].text
+        listed = await client.list_resources()
+        assert any(str(item.uri) == "office://capabilities" for item in listed.resources)
 
 
 async def test_protocol_mutations_errors_resources_progress_and_media(
@@ -59,6 +61,13 @@ async def test_protocol_mutations_errors_resources_progress_and_media(
         progress_updates.append((progress, total, message))
 
     async with Client(mcp) as client:
+        malformed = await client.call_tool(
+            "presentation_create", {"name": "Bad args", "unknown": True}
+        )
+        assert malformed.is_error
+        assert isinstance(malformed.content[0], types.TextContent)
+        assert "invalid presentation_create argument unknown" in malformed.content[0].text
+        assert "INTERNAL_ERROR" not in malformed.content[0].text
         unsafe = await client.call_tool(
             "presentation_create",
             {"name": "Bad", "slides": [{"name": "Bad", "html": "<script>x()</script>"}]},
@@ -162,8 +171,10 @@ async def test_resource_pagination_completion_and_subscription_invalidation(
         assert page1.next_cursor
         page2 = await client.list_resources(cursor=page1.next_cursor)
         assert len(page1.resources) == 100
-        assert len(page2.resources) == 5 and page2.next_cursor is None
-        assert len({str(item.uri) for item in page1.resources + page2.resources}) == 105
+        assert len(page2.resources) == 6 and page2.next_cursor is None
+        uris = {str(item.uri) for item in page1.resources + page2.resources}
+        assert len(uris) == 106 and "office://capabilities" in uris
+        assert len([uri for uri in uris if uri.startswith("office://presentations/")]) == 105
         completion = await client.complete(
             types.PromptReference(type="ref/prompt", name="review_presentation"),
             {"name": "presentation_id", "value": "Deck 000"},

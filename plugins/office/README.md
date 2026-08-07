@@ -24,9 +24,9 @@ An Agent Plugins client loads `plugin.json`, `mcp.json`, and the presentation sk
 
 ```bash
 cd server
-uv sync --extra dev
+uv sync --frozen --extra dev
 uv run playwright install chromium
-OFFICE_DATA_DIR=/path/to/private/state uv run python -m office_mcp
+OFFICE_DATA_DIR=/path/to/private/state uv run --frozen python -m office_mcp
 ```
 
 The source launcher is the current alpha distribution strategy. A future release may bundle a cross-platform runtime without changing the plugin contract.
@@ -49,11 +49,11 @@ Office exposes `office://capabilities` plus presentation metadata, outline, vali
 
 ## Security
 
-Model-authored source is sanitised and limited to inline CSS. JavaScript, active content, event handlers, dangerous URLs, stylesheet injection, and caller-owned Office IDs are rejected. `file:` and `https:` input default off; when enabled they enforce containment or SSRF/redirect/size policies. Imported PPTX packages receive path, type, XML, entry-count, compression-ratio, and decompressed-size checks.
+Model-authored source is sanitised and limited to inline CSS. JavaScript, active content, event handlers, dangerous URLs, stylesheet injection, and caller-owned Office/domOXML metadata are rejected. Render-time network assets are disabled; use bounded raster `data:` images or safe inline SVG. `file:` and `https:` PPTX input default off; when enabled they enforce containment or DNS-pinned SSRF/redirect/MIME/size policies. Imported PPTX packages receive path, relationship, active-content, type, XML, media, entry-count, compression-ratio, and decompressed-size checks.
 
 ## Current limitations
 
-Office follows domOXML's alpha capabilities and does not claim first-class chart authoring, arbitrary animations, notes, audio/video insertion, or master authoring. domOXML's public API does not yet accept its preservation fragments on a modified reverse-import render; Office therefore guarantees byte-identical untouched import export and reports preservation debt after edits instead of claiming losslessness.
+Office follows domOXML's alpha capabilities and does not claim first-class chart authoring, arbitrary animations, notes, audio/video insertion, or master authoring. Imported theme/transition semantics are represented through domOXML's normalized inline source where its reverse API does not expose separate metadata. domOXML's public API does not yet accept its preservation fragments on a modified reverse-import render; Office therefore guarantees byte-identical untouched import export and reports lost preservation debt after content edits instead of claiming losslessness.
 
 ## Development
 

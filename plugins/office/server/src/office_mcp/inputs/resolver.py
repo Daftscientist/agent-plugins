@@ -11,6 +11,7 @@ from urllib.parse import unquote, unquote_to_bytes, urljoin, urlparse
 import httpx
 
 from office_mcp.config import OfficeConfig
+from office_mcp.constants import PPTX_MIME
 from office_mcp.errors import ErrorCode, OfficeError
 
 
@@ -165,6 +166,22 @@ class HttpsUriResolver:
                             current = urljoin(current, location)
                             continue
                         response.raise_for_status()
+                        content_type = (
+                            response.headers.get("content-type", "")
+                            .split(";", 1)[0]
+                            .strip()
+                            .lower()
+                        )
+                        allowed_content_types = {
+                            PPTX_MIME,
+                            "application/octet-stream",
+                            "application/zip",
+                        }
+                        if content_type not in allowed_content_types:
+                            raise OfficeError(
+                                ErrorCode.INVALID_PRESENTATION_SOURCE,
+                                "HTTPS source did not return a PPTX-compatible media type",
+                            )
                         content_length = response.headers.get("content-length")
                         if content_length:
                             try:

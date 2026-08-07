@@ -37,5 +37,6 @@ class PresentationSnapshot(BaseModel):
     updated_at: datetime
     imported_pptx_b64: str | None = None
     imported_preservation: list[dict[str, object]] = Field(default_factory=lambda: [])
+    imported_coverage: list[dict[str, object]] = Field(default_factory=lambda: [])
     import_warnings: list[dict[str, object]] = Field(default_factory=lambda: [])
     content_changed_after_import: bool = False

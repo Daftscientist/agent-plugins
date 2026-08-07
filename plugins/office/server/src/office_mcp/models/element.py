@@ -98,9 +98,13 @@ class AttributeMutation(StrictModel):
         overlap = {key.lower() for key in self.set} & {key.lower() for key in self.remove}
         if overlap:
             raise ValueError(f"attributes cannot be both set and removed: {sorted(overlap)}")
-        forbidden = {key for key in (*self.set, *self.remove) if key.lower() == "data-office-id"}
+        forbidden = {
+            key
+            for key in (*self.set, *self.remove)
+            if key.lower() == "data-office-id" or key.lower().startswith("data-domoxml-")
+        }
         if forbidden:
-            raise ValueError("data-office-id is server-owned")
+            raise ValueError("Office/domOXML internal attributes are server-owned")
         if any(key.lower().startswith("on") for key in self.set):
             raise ValueError("event-handler attributes are not allowed")
         return self
