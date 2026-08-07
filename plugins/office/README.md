@@ -53,11 +53,13 @@ Model-authored source is sanitised and limited to inline CSS. JavaScript, active
 
 ## Current limitations
 
-Office follows domOXML's alpha capabilities and does not claim first-class chart authoring, arbitrary animations, notes, audio/video insertion, or master authoring. Imported theme/transition semantics are represented through domOXML's normalized inline source where its reverse API does not expose separate metadata. domOXML's public API does not yet accept its preservation fragments on a modified reverse-import render; Office therefore guarantees byte-identical untouched import export and reports lost preservation debt after content edits instead of claiming losslessness.
+Office follows domOXML's alpha capabilities and does not claim first-class chart authoring, arbitrary animations, notes, audio/video insertion, or master authoring. PowerPoint has one presentation-wide slide size: differing per-slide overrides can be previewed, but validation fails and export gives an actionable error until they are normalized. Imported theme/transition semantics are represented through domOXML's normalized inline source where its reverse API does not expose separate metadata. domOXML's public API does not yet accept its preservation fragments on a modified reverse-import render; Office therefore guarantees byte-identical untouched import export and reports lost preservation debt after content edits instead of claiming losslessness.
 
 ## Development
 
 Run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`, and `uv run pytest`. Integration tests use real Chromium and PPTX packages. Generate API docs with `uv run office-docs ../API_REFERENCE.md`.
+
+`python -m office_mcp --transport streamable-http` is a loopback-only development surface. A remote service must compose `create_server` with authenticated `RequestScopeProvider`, tenant-safe store/output adapters, transport authorization, and a shared subscription bus; the bundled launcher intentionally refuses non-loopback binding.
 
 ## License
 

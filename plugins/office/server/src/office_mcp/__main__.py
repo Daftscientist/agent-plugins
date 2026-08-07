@@ -14,6 +14,11 @@ def main() -> None:
     if args.transport == "stdio":
         mcp.run(transport="stdio")
     else:
+        if args.host not in {"127.0.0.1", "::1", "localhost"}:
+            parser.error(
+                "the bundled HTTP launcher is loopback-only; remote deployment requires "
+                "authenticated request-scope, store, and subscription adapters"
+            )
         mcp.run(transport="streamable-http", host=args.host, port=args.port)
 
 

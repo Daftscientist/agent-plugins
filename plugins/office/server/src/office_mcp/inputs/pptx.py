@@ -6,6 +6,7 @@ import zipfile
 from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree
 
+from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring
 
 from office_mcp.config import OfficeConfig
@@ -137,7 +138,13 @@ def validate_pptx(data: bytes, config: OfficeConfig) -> None:
                                 )
     except OfficeError:
         raise
-    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError, ValueError) as exc:
+    except (
+        zipfile.BadZipFile,
+        KeyError,
+        ElementTree.ParseError,
+        DefusedXmlException,
+        ValueError,
+    ) as exc:
         raise OfficeError(
             ErrorCode.INVALID_PPTX, "source is not a valid safe PPTX package"
         ) from exc

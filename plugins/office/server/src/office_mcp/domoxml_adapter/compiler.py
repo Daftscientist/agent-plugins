@@ -23,6 +23,7 @@ from domoxml.types import (
     SlideSize as DomSlideSize,
 )
 from pptx import Presentation as PptxPresentation
+from pptx.util import Inches
 
 from office_mcp.domain.html import parse_styles, sanitize_fragment, serialize_styles
 from office_mcp.domain.state import PresentationSnapshot, StoredSlide
@@ -32,6 +33,7 @@ from office_mcp.models.common import (
     PresetSlideSize,
     SlideSize,
     SlideSizePreset,
+    SlideTransition,
 )
 
 
@@ -49,6 +51,16 @@ def _size(size: SlideSize):
         return DomSlideSize(size.preset.value)
     assert isinstance(size, CustomSlideSize)
     return CustomSize(width_in=size.width_in, height_in=size.height_in)
+
+
+def _dimensions(size: SlideSize) -> tuple[float, float]:
+    if isinstance(size, CustomSlideSize):
+        return round(size.width_in, 4), round(size.height_in, 4)
+    return {
+        SlideSizePreset.WIDE_16_9: (13.333, 7.5),
+        SlideSizePreset.STANDARD_4_3: (10.0, 7.5),
+        SlideSizePreset.WIDE_16_10: (10.0, 6.25),
+    }[size.preset]
 
 
 def _model_size(width_px: int, height_px: int) -> SlideSize:
@@ -88,6 +100,16 @@ def _inline_css(html: str, css: str) -> str:
     return str(soup)
 
 
+def _with_transition(html: str, transition: SlideTransition | None) -> str:
+    if transition is None:
+        return html
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.find(True)
+    if isinstance(root, Tag):
+        root["data-transition"] = transition.value
+    return str(soup)
+
+
 class DomOXMLAdapter:
     def __init__(self, *, max_concurrency: int = 2, timeout_seconds: float = 120.0) -> None:
         self._render_slots = asyncio.Semaphore(max(1, max_concurrency))
@@ -111,7 +133,10 @@ class DomOXMLAdapter:
         for slide in snapshot.slides:
             deck.add(
                 Slide(
-                    html=slide.html,
+                    # domOXML's public extractor reads typed transition intent
+                    # from the slide root. Inject it here so the public
+                    # Slide.transition value survives the current render path.
+                    html=_with_transition(slide.html, slide.transition),
                     transition=Transition(slide.transition.value) if slide.transition else None,
                     size=_size(slide.size) if slide.size else None,
                 )
@@ -141,12 +166,31 @@ class DomOXMLAdapter:
             return base64.b64decode(snapshot.imported_pptx_b64), None
         if not snapshot.slides:
             buffer = io.BytesIO()
-            PptxPresentation().save(buffer)
+            empty = PptxPresentation()
+            width_in, height_in = _dimensions(snapshot.size)
+            empty.slide_width = Inches(width_in)
+            empty.slide_height = Inches(height_in)
+            empty.save(buffer)
             return buffer.getvalue(), None
+        if self.mixed_size_indices(snapshot):
+            raise OfficeError(
+                ErrorCode.EXPORT_FAILED,
+                "PowerPoint files require one slide size; clear per-slide size overrides "
+                "or make every effective slide size match the presentation size",
+            )
         result = await self.render(snapshot, {OutputFormat.PPTX})
         if result.pptx is None:
             raise OfficeError(ErrorCode.EXPORT_FAILED, "domOXML produced no PPTX output")
         return result.pptx, result
+
+    @staticmethod
+    def mixed_size_indices(snapshot: PresentationSnapshot) -> set[int]:
+        deck_dimensions = _dimensions(snapshot.size)
+        return {
+            index
+            for index, slide in enumerate(snapshot.slides)
+            if slide.size is not None and _dimensions(slide.size) != deck_dimensions
+        }
 
     async def preview_pngs(
         self, snapshot: PresentationSnapshot, indices: set[int]
@@ -183,9 +227,32 @@ class DomOXMLAdapter:
         )
         slides: list[StoredSlide] = []
         for index, source in enumerate(imported.slides, start=1):
-            html = _inline_css(source.html, imported.css)
+            # domOXML emits package assets as paths relative to its generated
+            # stylesheet (for example ``../assets/image.png``). Resolve those
+            # trusted, extracted bytes before parsing styles so the general
+            # HTML policy never has to permit filesystem-like CSS URLs.
+            source_html = source.html
+            source_css = imported.css
             for path, (mime_type, encoded) in assets.items():
-                html = html.replace(path, f"data:{mime_type};base64,{encoded}")
+                data_uri = f"data:{mime_type};base64,{encoded}"
+                normalized_path = path.lstrip("./")
+                references = {
+                    path,
+                    normalized_path,
+                    f"./{normalized_path}",
+                    f"../{normalized_path}",
+                }
+                for reference in sorted(references, key=len, reverse=True):
+                    source_html = source_html.replace(reference, data_uri)
+                    source_css = source_css.replace(reference, data_uri)
+            html = _inline_css(source_html, source_css)
+            source_soup = BeautifulSoup(html, "html.parser")
+            source_root = source_soup.find(True)
+            transition_value = (
+                str(source_root.get("data-transition"))
+                if isinstance(source_root, Tag) and source_root.get("data-transition")
+                else None
+            )
             normalized, _ = sanitize_fragment(html, _preserve_domoxml_metadata=True)
             soup = BeautifulSoup(normalized, "html.parser")
             title = soup.find(["h1", "h2", "h3", "title"])
@@ -200,6 +267,9 @@ class DomOXMLAdapter:
                     slide_id="",
                     name=name or f"Slide {index}",
                     html=normalized,
+                    transition=SlideTransition(transition_value)
+                    if transition_value in {item.value for item in SlideTransition}
+                    else None,
                     size=slide_size if slide_size != deck_size else None,
                 )
             )

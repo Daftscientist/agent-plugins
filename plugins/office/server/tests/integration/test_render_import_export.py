@@ -190,3 +190,27 @@ async def test_imported_dimensions_and_preservation_debt_remain_truthful(
         for shape in output_slide.shapes
     )
     assert "After" in visible_text and "Before" not in visible_text
+
+
+async def test_empty_deck_export_preserves_configured_slide_size(
+    office: tuple[MCPServer[Any], OfficeRuntime],
+) -> None:
+    _, runtime = office
+    created = await runtime.service.create(
+        LOCAL_SCOPE,
+        PresentationCreateArgs(
+            name="Empty widescreen",
+            size=PresetSlideSize(preset=SlideSizePreset.WIDE_16_9),
+        ),
+    )
+    exported = await runtime.service.export(
+        LOCAL_SCOPE, PresentationExportArgs(presentation_id=created.presentation_id)
+    )
+    pptx = await runtime.output.read(LOCAL_SCOPE, exported.resource_uri)
+    assert pptx is not None
+    package = PptxPresentation(io.BytesIO(pptx))
+    package_dimensions = cast(Any, package)
+    slide_width = int(package_dimensions.slide_width)
+    slide_height = int(package_dimensions.slide_height)
+    assert round(slide_width / 914_400, 3) == 13.333
+    assert round(slide_height / 914_400, 3) == 7.5

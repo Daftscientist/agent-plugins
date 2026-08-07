@@ -164,6 +164,13 @@ def sanitize_fragment(
             if lowered.startswith("data-domoxml-") and not _preserve_domoxml_metadata:
                 del tag.attrs[attr]
                 continue
+            if lowered in {
+                "data-transition",
+                "data-transition-duration",
+                "data-transition-direction",
+            }:
+                del tag.attrs[attr]
+                continue
             if lowered == "data-office-id" and (
                 not OFFICE_ID.fullmatch(text_value) or text_value in seen_ids
             ):

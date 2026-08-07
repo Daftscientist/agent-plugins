@@ -67,7 +67,7 @@ from office_mcp.models.slide import (
     SlideUpdateArgs,
 )
 from office_mcp.models.validation import PresentationValidateArgs, PresentationValidationResult
-from office_mcp.storage.protocols import RequestScopeProvider
+from office_mcp.storage.protocols import RequestScopeProvider, bind_request_scope
 
 logger = logging.getLogger(__name__)
 
@@ -460,6 +460,7 @@ def register_tools(
                 ) from exc
             try:
                 scope = await scopes.current()
+                bind_request_scope(scope)
                 expensive = name in {
                     "presentation_open",
                     "presentation_validate",

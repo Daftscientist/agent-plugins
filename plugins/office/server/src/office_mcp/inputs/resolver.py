@@ -27,7 +27,7 @@ def forbidden_address(address: str) -> bool:
     )
 
 
-async def _validated_addresses(host: str, port: int) -> list[str]:
+async def validated_addresses(host: str, port: int) -> list[str]:
     normalized_host = host.rstrip(".").lower()
     if normalized_host == "localhost" or normalized_host.endswith(
         (".localhost", ".local", ".internal")
@@ -56,6 +56,13 @@ class DataUriResolver:
             raise OfficeError(ErrorCode.INVALID_PRESENTATION_SOURCE, "malformed data URI") from exc
         if not header.lower().startswith("data:"):
             raise OfficeError(ErrorCode.UNSUPPORTED_SOURCE_SCHEME, "expected a data URI")
+        encoded_limit = (
+            (self.maximum * 4 // 3) + 8 if ";base64" in header.lower() else self.maximum * 3
+        )
+        if len(encoded) > encoded_limit:
+            raise OfficeError(
+                ErrorCode.SOURCE_TOO_LARGE, "presentation source exceeds the configured byte limit"
+            )
         try:
             data = (
                 base64.b64decode(encoded, validate=True)
@@ -85,11 +92,12 @@ class FileUriResolver:
             raise OfficeError(
                 ErrorCode.INVALID_PRESENTATION_SOURCE, "remote file authorities are not allowed"
             )
-        if "\x00" in parsed.path:
+        decoded_path = unquote(parsed.path)
+        if "\x00" in decoded_path:
             raise OfficeError(ErrorCode.INVALID_PRESENTATION_SOURCE, "invalid local path")
         try:
-            path = Path(unquote(parsed.path)).resolve(strict=True)
-        except OSError as exc:
+            path = Path(decoded_path).resolve(strict=True)
+        except (OSError, ValueError) as exc:
             raise OfficeError(
                 ErrorCode.INVALID_PRESENTATION_SOURCE, "local source does not exist"
             ) from exc
@@ -132,7 +140,7 @@ class HttpsUriResolver:
                         "only credential-free HTTPS sources are allowed",
                     )
                 port = parsed.port or 443
-                address = (await _validated_addresses(parsed.hostname, port))[0]
+                address = (await validated_addresses(parsed.hostname, port))[0]
                 # Connect to the validated address, while retaining the
                 # original hostname for HTTP Host and TLS SNI/certificate
                 # verification.  This closes the DNS-rebinding window between

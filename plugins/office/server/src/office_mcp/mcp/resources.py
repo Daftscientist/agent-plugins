@@ -60,6 +60,7 @@ def register_resources(
                     "authoring": {"html": True, "inline_css_only": True, "javascript": False},
                     "remote_render_assets": False,
                     "slide_sizes": ["16:9", "4:3", "16:10", "custom"],
+                    "pptx_uniform_size_required": True,
                     "transitions": [
                         "none",
                         "fade",

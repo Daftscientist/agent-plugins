@@ -222,7 +222,13 @@ class PresentationService:
         data = await self.resolver.resolve(args.source.uri)
         validate_pptx(data, self.config)
         imported = await self.adapter.import_pptx(data)
+        if len(imported.slides) > MAX_SLIDES:
+            raise OfficeError(ErrorCode.RESOURCE_TOO_LARGE, "presentation exceeds slide limit")
         for slide in imported.slides:
+            if len(slide.html.encode("utf-8")) > self.config.max_html_bytes:
+                raise OfficeError(
+                    ErrorCode.RESOURCE_TOO_LARGE, "imported slide HTML exceeds the byte limit"
+                )
             slide.slide_id = slide_id()
         now = now_utc()
         fallback_name = args.source.filename_hint or "Imported presentation"
@@ -888,6 +894,32 @@ class PresentationService:
                         reason="source-only OOXML preservation fragment is detached after edit",
                     )
                 )
+        mixed_sizes = self.adapter.mixed_size_indices(snapshot) & set(indices)
+        for index in sorted(mixed_sizes):
+            slide = snapshot.slides[index]
+            warnings.append(
+                ValidationWarning(
+                    code="MIXED_SLIDE_SIZE_UNSUPPORTED",
+                    message=(
+                        "PowerPoint export requires one presentation-wide slide size; "
+                        "this per-slide override is preview-only until normalized."
+                    ),
+                    slide_id=slide.slide_id,
+                    element="slide-size",
+                )
+            )
+            coverage.append(
+                CoverageItem(
+                    slide_id=slide.slide_id,
+                    element="slide-size",
+                    representation=Representation.FAILED,
+                    editability=Editability.NONE,
+                    source_retention=SourceRetention.NOT_REQUIRED,
+                    output_count=0,
+                    raster_area_emu2=0,
+                    reason="effective slide size differs from presentation-wide PPTX size",
+                )
+            )
         failures = sum(item.representation is Representation.FAILED for item in coverage)
         count = len(coverage)
         native = sum(

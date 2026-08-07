@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from mcp.server import MCPServer
+from mcp.server.subscriptions import SubscriptionBus
 
 from office_mcp.config import OfficeConfig
 from office_mcp.domain.cursors import CursorCodec
@@ -14,40 +15,60 @@ from office_mcp.mcp import (
     register_completions,
     register_prompts,
     register_resources,
+    register_scoped_subscriptions,
     register_tools,
 )
 from office_mcp.outputs import OfficeResourceOutputSink
 from office_mcp.storage import LocalPresentationStore, LocalScopeProvider
+from office_mcp.storage.protocols import (
+    InputResolver,
+    OutputSink,
+    PresentationStore,
+    RequestScopeProvider,
+)
+from office_mcp.storage.subscriptions import ScopedSubscriptionBus
 
 
 @dataclass(frozen=True)
 class OfficeRuntime:
     config: OfficeConfig
-    store: LocalPresentationStore
-    scopes: LocalScopeProvider
-    output: OfficeResourceOutputSink
+    store: PresentationStore
+    scopes: RequestScopeProvider
+    output: OutputSink
     service: PresentationService
     cursor: CursorCodec
 
 
-def create_server(config: OfficeConfig | None = None) -> tuple[MCPServer, OfficeRuntime]:
+def create_server(
+    config: OfficeConfig | None = None,
+    *,
+    store: PresentationStore | None = None,
+    scopes: RequestScopeProvider | None = None,
+    resolver: InputResolver | None = None,
+    output: OutputSink | None = None,
+    adapter: DomOXMLAdapter | None = None,
+    subscriptions: SubscriptionBus | None = None,
+) -> tuple[MCPServer, OfficeRuntime]:
     config = config or OfficeConfig.from_env()
     config.prepare()
-    store = LocalPresentationStore(config.data_dir / "office.sqlite3")
-    scopes = LocalScopeProvider()
-    output = OfficeResourceOutputSink(config.data_dir / "exports")
+    store = store or LocalPresentationStore(config.data_dir / "office.sqlite3")
+    scopes = scopes or LocalScopeProvider()
+    resolver = resolver or CompositeInputResolver(config)
+    output = output or OfficeResourceOutputSink(config.data_dir / "exports")
+    adapter = adapter or DomOXMLAdapter(
+        max_concurrency=config.max_render_concurrency,
+        timeout_seconds=config.operation_timeout_seconds,
+    )
     cursor = CursorCodec(config.cursor_secret)
     service = PresentationService(
         store=store,
-        resolver=CompositeInputResolver(config),
+        resolver=resolver,
         output=output,
-        adapter=DomOXMLAdapter(
-            max_concurrency=config.max_render_concurrency,
-            timeout_seconds=config.operation_timeout_seconds,
-        ),
+        adapter=adapter,
         cursor=cursor,
         config=config,
     )
+    subscriptions = subscriptions or ScopedSubscriptionBus()
     mcp = MCPServer(
         "Office",
         version="0.1.0",
@@ -58,11 +79,13 @@ def create_server(config: OfficeConfig | None = None) -> tuple[MCPServer, Office
             "verification and presentation_validate for editability/fidelity verification."
         ),
         icons=OFFICE_ICONS,
+        subscriptions=subscriptions,
     )
     register_tools(mcp, service, scopes)
     register_resources(mcp, service, store, scopes, cursor)
     register_prompts(mcp)
     register_completions(mcp, store, scopes)
+    register_scoped_subscriptions(mcp, scopes, subscriptions)
     runtime = OfficeRuntime(config, store, scopes, output, service, cursor)
     return mcp, runtime
 

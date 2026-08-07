@@ -30,10 +30,12 @@ def test_active_html_is_rejected(html: str) -> None:
 def test_server_replaces_spoofed_ids_and_strips_classes() -> None:
     result, assigned = sanitize_fragment(
         '<section data-office-id="el_attacker" data-domoxml-preserved-payload="attacker" '
+        'data-transition="morph" '
         'class="styled"><h1>x</h1></section>'
     )
     assert "el_attacker" not in result
     assert "data-domoxml" not in result
+    assert "data-transition" not in result
     assert "class=" not in result
     assert len(assigned) == 2
     assert all(identifier in result for identifier in assigned)

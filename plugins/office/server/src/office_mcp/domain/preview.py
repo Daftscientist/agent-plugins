@@ -4,7 +4,7 @@ import io
 import math
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from office_mcp.constants import MAX_CONTACT_SHEET_SLIDES
 from office_mcp.models.preview import PreviewLabels, PreviewQuality
@@ -45,8 +45,11 @@ def contact_sheets(
         cols = columns or auto_columns(len(images))
         rows = math.ceil(len(images) / cols)
         cell_width = 640 if quality is PreviewQuality.HIGH else 400
-        aspect = images[0].height / images[0].width
-        cell_height = round(cell_width * aspect)
+        # Use one bounded cell geometry while fitting each slide without
+        # distortion. Mixed custom/preset slide sizes therefore letterbox
+        # instead of being stretched to the first slide's aspect ratio.
+        max_aspect = max(image.height / image.width for image in images)
+        cell_height = round(cell_width * min(max_aspect, 1.0))
         label_height = 0 if labels is PreviewLabels.NONE else 32
         gutter = 18
         width = gutter + cols * (cell_width + gutter)
@@ -58,10 +61,12 @@ def contact_sheets(
             row, col = divmod(index, cols)
             x = gutter + col * (cell_width + gutter)
             y = gutter + row * (cell_height + label_height + gutter)
-            resized = image.resize(  # pyright: ignore[reportUnknownMemberType]
-                (cell_width, cell_height), Image.Resampling.LANCZOS
+            resized = ImageOps.contain(  # pyright: ignore[reportUnknownMemberType]
+                image, (cell_width, cell_height), Image.Resampling.LANCZOS
             )
-            canvas.paste(resized, (x, y))
+            image_x = x + (cell_width - resized.width) // 2
+            image_y = y + (cell_height - resized.height) // 2
+            canvas.paste(resized, (image_x, image_y))
             number = offset + index + 1
             if labels is PreviewLabels.NUMBER:
                 label = str(number)

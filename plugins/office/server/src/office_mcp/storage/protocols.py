@@ -1,5 +1,6 @@
 """Storage and request-scope abstraction seams."""
 
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -12,6 +13,20 @@ class RequestScope:
 
 
 LOCAL_SCOPE = RequestScope("local")
+_REQUEST_SCOPE: ContextVar[RequestScope] = ContextVar("office_request_scope", default=LOCAL_SCOPE)
+
+
+def bind_request_scope(scope: RequestScope) -> Token[RequestScope]:
+    """Bind hidden request identity for scoped caches/event fan-out in this task."""
+    return _REQUEST_SCOPE.set(scope)
+
+
+def reset_request_scope(token: Token[RequestScope]) -> None:
+    _REQUEST_SCOPE.reset(token)
+
+
+def bound_request_scope() -> RequestScope:
+    return _REQUEST_SCOPE.get()
 
 
 class RequestScopeProvider(Protocol):
