@@ -190,11 +190,15 @@ Input schema:
       "properties": {
         "body": {
           "default": "Inter",
+          "maxLength": 200,
+          "minLength": 1,
           "title": "Body",
           "type": "string"
         },
         "heading": {
           "default": "Inter",
+          "maxLength": 200,
+          "minLength": 1,
           "title": "Heading",
           "type": "string"
         }
@@ -207,21 +211,29 @@ Input schema:
       "properties": {
         "accent": {
           "default": "#4f46e5",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Accent",
           "type": "string"
         },
         "background": {
           "default": "#ffffff",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Background",
           "type": "string"
         },
         "foreground": {
           "default": "#0b0b0c",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Foreground",
           "type": "string"
         },
         "muted": {
           "default": "#6b7280",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Muted",
           "type": "string"
         }
@@ -1146,11 +1158,15 @@ Output schema:
       "properties": {
         "body": {
           "default": "Inter",
+          "maxLength": 200,
+          "minLength": 1,
           "title": "Body",
           "type": "string"
         },
         "heading": {
           "default": "Inter",
+          "maxLength": 200,
+          "minLength": 1,
           "title": "Heading",
           "type": "string"
         }
@@ -1163,21 +1179,29 @@ Output schema:
       "properties": {
         "accent": {
           "default": "#4f46e5",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Accent",
           "type": "string"
         },
         "background": {
           "default": "#ffffff",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Background",
           "type": "string"
         },
         "foreground": {
           "default": "#0b0b0c",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Foreground",
           "type": "string"
         },
         "muted": {
           "default": "#6b7280",
+          "maxLength": 100,
+          "minLength": 1,
           "title": "Muted",
           "type": "string"
         }
@@ -1400,6 +1424,8 @@ Input schema:
         "body": {
           "anyOf": [
             {
+              "maxLength": 200,
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -1412,6 +1438,8 @@ Input schema:
         "heading": {
           "anyOf": [
             {
+              "maxLength": 200,
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -1431,6 +1459,8 @@ Input schema:
         "accent": {
           "anyOf": [
             {
+              "maxLength": 100,
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -1443,6 +1473,8 @@ Input schema:
         "background": {
           "anyOf": [
             {
+              "maxLength": 100,
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -1455,6 +1487,8 @@ Input schema:
         "foreground": {
           "anyOf": [
             {
+              "maxLength": 100,
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -1467,6 +1501,8 @@ Input schema:
         "muted": {
           "anyOf": [
             {
+              "maxLength": 100,
+              "minLength": 1,
               "type": "string"
             },
             {

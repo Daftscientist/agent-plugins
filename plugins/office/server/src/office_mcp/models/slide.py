@@ -103,6 +103,8 @@ class SlideUpdateArgs(StrictModel):
     def has_patch(self) -> "SlideUpdateArgs":
         if not ({"name", "description", "transition", "size", "html"} & self.model_fields_set):
             raise ValueError("at least one mutable field must be supplied")
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("slide name cannot be cleared")
         return self
 
 

@@ -32,6 +32,7 @@ def contact_sheets(
     pngs: list[bytes],
     slide_ids: list[str],
     names: list[str],
+    numbers: list[int],
     labels: PreviewLabels,
     quality: PreviewQuality,
     columns: int | None,
@@ -41,6 +42,7 @@ def contact_sheets(
         chunk = pngs[offset : offset + MAX_CONTACT_SHEET_SLIDES]
         chunk_ids = slide_ids[offset : offset + MAX_CONTACT_SHEET_SLIDES]
         chunk_names = names[offset : offset + MAX_CONTACT_SHEET_SLIDES]
+        chunk_numbers = numbers[offset : offset + MAX_CONTACT_SHEET_SLIDES]
         images: list[Image.Image] = [Image.open(io.BytesIO(data)).convert("RGB") for data in chunk]
         cols = columns or auto_columns(len(images))
         rows = math.ceil(len(images) / cols)
@@ -57,7 +59,9 @@ def contact_sheets(
         canvas = Image.new("RGB", (width, height), "#e5e7eb")
         draw = ImageDraw.Draw(canvas)
         font = ImageFont.load_default(size=16)
-        for index, (image, name) in enumerate(zip(images, chunk_names, strict=True)):
+        for index, (image, name, number) in enumerate(
+            zip(images, chunk_names, chunk_numbers, strict=True)
+        ):
             row, col = divmod(index, cols)
             x = gutter + col * (cell_width + gutter)
             y = gutter + row * (cell_height + label_height + gutter)
@@ -67,7 +71,6 @@ def contact_sheets(
             image_x = x + (cell_width - resized.width) // 2
             image_y = y + (cell_height - resized.height) // 2
             canvas.paste(resized, (image_x, image_y))
-            number = offset + index + 1
             if labels is PreviewLabels.NUMBER:
                 label = str(number)
             elif labels is PreviewLabels.NAME:

@@ -27,7 +27,7 @@ def register_completions(
         snapshots = await store.list_current(scope)
         if argument.name == "presentation_id":
             matches = [
-                f"{item.presentation_id} — {item.name}"
+                item.presentation_id
                 for item in snapshots
                 if partial in item.presentation_id.casefold() or partial in item.name.casefold()
             ]
@@ -35,14 +35,13 @@ def register_completions(
         resolved = context.arguments if context else {}
         presentation = resolved.get("presentation_id") if resolved else None
         if presentation:
-            presentation = presentation.split(" — ", 1)[0]
             try:
                 snapshot = await store.get(scope, presentation)
             except Exception:
                 return Completion(values=[], total=0, has_more=False)
             if argument.name == "slide_id":
                 matches = [
-                    f"{slide.slide_id} — {slide.name}"
+                    slide.slide_id
                     for slide in snapshot.slides
                     if partial in slide.slide_id.casefold() or partial in slide.name.casefold()
                 ]
@@ -51,7 +50,6 @@ def register_completions(
                 )
             slide_value = resolved.get("slide_id") if resolved else None
             if argument.name == "element_id" and slide_value:
-                slide_value = slide_value.split(" — ", 1)[0]
                 slide = next(
                     (item for item in snapshot.slides if item.slide_id == slide_value), None
                 )
@@ -63,7 +61,7 @@ def register_completions(
                         text = tag.get_text(" ", strip=True)[:50]
                         display = f"{identifier} — {name} — {text}"
                         if partial in display.casefold():
-                            values.append(display)
+                            values.append(identifier)
                     return Completion(
                         values=values[:30], total=len(values), has_more=len(values) > 30
                     )

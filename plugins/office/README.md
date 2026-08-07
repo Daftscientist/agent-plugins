@@ -53,7 +53,7 @@ Model-authored source is sanitised and limited to inline CSS. JavaScript, active
 
 ## Current limitations
 
-Office follows domOXML's alpha capabilities and does not claim first-class chart authoring, arbitrary animations, notes, audio/video insertion, or master authoring. PowerPoint has one presentation-wide slide size: differing per-slide overrides can be previewed, but validation fails and export gives an actionable error until they are normalized. Imported theme/transition semantics are represented through domOXML's normalized inline source where its reverse API does not expose separate metadata. domOXML's public API does not yet accept its preservation fragments on a modified reverse-import render; Office therefore guarantees byte-identical untouched import export and reports lost preservation debt after content edits instead of claiming losslessness.
+Office follows domOXML's alpha capabilities and does not claim first-class chart authoring, arbitrary animations, notes, audio/video insertion, or master authoring. PowerPoint has one presentation-wide slide size: differing per-slide overrides can be previewed, but validation fails and export gives an actionable error until they are normalized. Imported theme/transition semantics are represented through domOXML's normalized inline source where its reverse API does not expose separate metadata. domOXML's public API does not yet accept its preservation fragments on a modified reverse-import render; Office therefore guarantees byte-identical untouched import export and explicitly blocks export after content edits when such fragments exist, preventing silent loss.
 
 ## Development
 

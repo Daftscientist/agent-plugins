@@ -164,6 +164,13 @@ class DomOXMLAdapter:
     async def export_pptx(self, snapshot: PresentationSnapshot) -> tuple[bytes, object]:
         if snapshot.imported_pptx_b64 and not snapshot.content_changed_after_import:
             return base64.b64decode(snapshot.imported_pptx_b64), None
+        if snapshot.imported_pptx_b64 and snapshot.imported_preservation:
+            raise OfficeError(
+                ErrorCode.EXPORT_FAILED,
+                "this edited import contains OOXML preservation fragments that the current "
+                "domOXML public API cannot safely reattach; export is blocked to prevent "
+                "silent data loss",
+            )
         if not snapshot.slides:
             buffer = io.BytesIO()
             empty = PptxPresentation()

@@ -321,17 +321,18 @@ class PresentationService:
         elif args.sort is PresentationSearchSort.UPDATED_ASC:
             snapshots.sort(key=lambda item: (item.updated_at, item.presentation_id))
         elif args.sort is PresentationSearchSort.UPDATED_DESC:
-            snapshots.sort(key=lambda item: (item.updated_at, item.presentation_id), reverse=True)
+            snapshots.sort(key=lambda item: item.presentation_id)
+            snapshots.sort(key=lambda item: item.updated_at, reverse=True)
         elif args.sort is PresentationSearchSort.CREATED_ASC:
             snapshots.sort(key=lambda item: (item.created_at, item.presentation_id))
         elif args.sort is PresentationSearchSort.CREATED_DESC:
-            snapshots.sort(key=lambda item: (item.created_at, item.presentation_id), reverse=True)
+            snapshots.sort(key=lambda item: item.presentation_id)
+            snapshots.sort(key=lambda item: item.created_at, reverse=True)
         elif args.sort is PresentationSearchSort.NAME_ASC:
             snapshots.sort(key=lambda item: (item.name.casefold(), item.presentation_id))
         elif args.sort is PresentationSearchSort.NAME_DESC:
-            snapshots.sort(
-                key=lambda item: (item.name.casefold(), item.presentation_id), reverse=True
-            )
+            snapshots.sort(key=lambda item: item.presentation_id)
+            snapshots.sort(key=lambda item: item.name.casefold(), reverse=True)
         filter_hash = hashlib.sha256(
             args.model_dump_json(exclude={"cursor", "limit"}).encode()
         ).hexdigest()
@@ -390,7 +391,8 @@ class PresentationService:
     async def update(self, scope: RequestScope, args: PresentationUpdateArgs) -> MutationResult:
         current = await self.store.get(scope, args.presentation_id)
         previous, snapshot = self._next(current)
-        if "name" in args.model_fields_set and args.name is not None:
+        if "name" in args.model_fields_set:
+            assert args.name is not None
             snapshot.name = args.name
         if "description" in args.model_fields_set:
             snapshot.description = args.description
@@ -680,12 +682,14 @@ class PresentationService:
                 tag.clear()
                 tag.append(NavigableString(mutation.text or ""))
             elif "inner_html" in mutation.model_fields_set:
-                fragment_html = mutation.inner_html or "<span></span>"
-                normalized, _ = self._sanitize(fragment_html)
-                fragment = BeautifulSoup(normalized, "html.parser")
                 tag.clear()
-                for child in list(fragment.contents):
-                    tag.append(child.extract())
+                if mutation.inner_html is None:
+                    raise OfficeError(ErrorCode.INVALID_HTML, "inner_html cannot be null")
+                if mutation.inner_html:
+                    normalized, _ = self._sanitize(mutation.inner_html)
+                    fragment = BeautifulSoup(normalized, "html.parser")
+                    for child in list(fragment.contents):
+                        tag.append(child.extract())
             elif "replace_html" in mutation.model_fields_set:
                 normalized, _ = self._sanitize(mutation.replace_html or "", exactly_one_root=True)
                 replacement = BeautifulSoup(normalized, "html.parser").find(True)
@@ -886,12 +890,15 @@ class PresentationService:
                     CoverageItem(
                         slide_id=snapshot.slides[number - 1].slide_id,
                         element=str(fragment.get("owner_node_id") or part),
-                        representation=Representation.APPROXIMATED,
+                        representation=Representation.FAILED,
                         editability=Editability.NONE,
                         source_retention=SourceRetention.LOST,
                         output_count=0,
                         raster_area_emu2=0,
-                        reason="source-only OOXML preservation fragment is detached after edit",
+                        reason=(
+                            "source-only OOXML preservation fragment is detached after edit; "
+                            "export is blocked to prevent silent loss"
+                        ),
                     )
                 )
         mixed_sizes = self.adapter.mixed_size_indices(snapshot) & set(indices)
@@ -1018,6 +1025,7 @@ class PresentationService:
                 pngs,
                 chosen_ids,
                 [snapshot.slides[index].name for index in indices],
+                [index + 1 for index in indices],
                 args.labels,
                 args.quality,
                 args.columns,
@@ -1046,6 +1054,8 @@ class PresentationService:
     @staticmethod
     def sanitize_filename(filename: str) -> str:
         cleaned = re.sub(r"[\\/:*?\"<>|\x00-\x1f]", "_", filename).strip(" .")
+        if cleaned.lower().endswith(".pptx"):
+            cleaned = cleaned[:-5].rstrip(" .")
         reserved = {
             "CON",
             "PRN",
@@ -1056,9 +1066,7 @@ class PresentationService:
         }
         if not cleaned or cleaned.split(".")[0].upper() in reserved:
             cleaned = "presentation"
-        if not cleaned.lower().endswith(".pptx"):
-            cleaned += ".pptx"
-        return cleaned[:255]
+        return cleaned[:250].rstrip(" .") + ".pptx"
 
     async def export(
         self, scope: RequestScope, args: PresentationExportArgs

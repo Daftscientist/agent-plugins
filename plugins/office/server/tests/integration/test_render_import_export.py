@@ -2,6 +2,7 @@ import base64
 import io
 from typing import Any, cast
 
+import pytest
 from bs4 import BeautifulSoup, Tag
 from mcp.server import MCPServer
 from PIL import Image
@@ -11,6 +12,7 @@ from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches
 
 from office_mcp.app import OfficeRuntime
+from office_mcp.errors import ErrorCode, OfficeError
 from office_mcp.inputs.pptx import validate_pptx
 from office_mcp.models.common import PresetSlideSize, SlideSizePreset, SourceRetention
 from office_mcp.models.element import ElementById, ElementMutation, ElementUpdateArgs
@@ -175,21 +177,18 @@ async def test_imported_dimensions_and_preservation_debt_remain_truthful(
     )
     assert any(warning.code == "PRESERVATION_DEBT" for warning in validation.warnings)
     assert validation.coverage and any(
-        item.source_retention is SourceRetention.LOST for item in validation.coverage
+        item.source_retention is SourceRetention.LOST and item.representation.value == "failed"
+        for item in validation.coverage
     )
-    exported = await runtime.service.export(
-        LOCAL_SCOPE,
-        PresentationExportArgs(presentation_id=opened.presentation_id, revision=changed.revision),
-    )
-    exported_bytes = await runtime.output.read(LOCAL_SCOPE, exported.resource_uri)
-    assert exported_bytes is not None
-    reopened = PptxPresentation(io.BytesIO(exported_bytes))
-    visible_text = " ".join(
-        str(getattr(cast(Any, shape), "text", ""))
-        for output_slide in reopened.slides
-        for shape in output_slide.shapes
-    )
-    assert "After" in visible_text and "Before" not in visible_text
+    with pytest.raises(OfficeError) as export_error:
+        await runtime.service.export(
+            LOCAL_SCOPE,
+            PresentationExportArgs(
+                presentation_id=opened.presentation_id, revision=changed.revision
+            ),
+        )
+    assert export_error.value.code is ErrorCode.EXPORT_FAILED
+    assert "silent data loss" in export_error.value.message
 
 
 async def test_empty_deck_export_preserves_configured_slide_size(

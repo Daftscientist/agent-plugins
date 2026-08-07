@@ -1,9 +1,10 @@
 """Shared public domain types."""
 
+import re
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import AfterValidator, Field
 
 from .base import StrictModel
 
@@ -32,6 +33,42 @@ class CustomSlideSize(StrictModel):
 SlideSize = Annotated[PresetSlideSize | CustomSlideSize, Field(discriminator="type")]
 
 
+_CSS_COLOR = re.compile(
+    r"^(?:#[0-9a-f]{3,8}|[a-z]+|"
+    r"(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)"
+    r"\([0-9a-z.,%+\- /]+\))$",
+    re.IGNORECASE,
+)
+
+
+def _validated_css_color(value: str) -> str:
+    value = value.strip()
+    if not _CSS_COLOR.fullmatch(value):
+        raise ValueError("must be a literal CSS color; URLs and CSS variables are not allowed")
+    return value
+
+
+ColorToken = Annotated[
+    str,
+    Field(min_length=1, max_length=100),
+    AfterValidator(_validated_css_color),
+]
+
+
+def _validated_font_family(value: str) -> str:
+    value = value.strip()
+    if not value or any(ord(char) < 32 or char in ";{}():/@\\" for char in value):
+        raise ValueError("must be a literal font-family name or comma-separated family list")
+    return value
+
+
+FontToken = Annotated[
+    str,
+    Field(min_length=1, max_length=200),
+    AfterValidator(_validated_font_family),
+]
+
+
 class SlideTransition(StrEnum):
     NONE = "none"
     FADE = "fade"
@@ -46,15 +83,15 @@ class SlideTransition(StrEnum):
 
 
 class ThemePalette(StrictModel):
-    background: str = "#ffffff"
-    foreground: str = "#0b0b0c"
-    accent: str = "#4f46e5"
-    muted: str = "#6b7280"
+    background: ColorToken = "#ffffff"
+    foreground: ColorToken = "#0b0b0c"
+    accent: ColorToken = "#4f46e5"
+    muted: ColorToken = "#6b7280"
 
 
 class ThemeFonts(StrictModel):
-    heading: str = "Inter"
-    body: str = "Inter"
+    heading: FontToken = "Inter"
+    body: FontToken = "Inter"
 
 
 class PresentationTheme(StrictModel):

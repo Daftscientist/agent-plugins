@@ -1,5 +1,6 @@
 """Office resource tree and true paginated presentation catalogue."""
 
+import io
 import json
 from typing import Any, Literal
 
@@ -7,11 +8,19 @@ from mcp.server import MCPServer
 from mcp.server.context import ServerRequestContext
 from mcp.server.mcpserver.context import Context
 from mcp_types import ListResourcesResult, PaginatedRequestParams, Resource
+from PIL import Image
 
 from office_mcp.constants import OFFICE_VERSION, PPTX_MIME, RESOURCE_PAGE_SIZE
 from office_mcp.domain.cursors import CursorCodec
 from office_mcp.domain.service import PresentationService
-from office_mcp.icons import OFFICE_ICONS, PRESENTATION_ICONS, PREVIEW_ICONS, SLIDE_ICONS
+from office_mcp.icons import (
+    ELEMENT_ICONS,
+    OFFICE_ICONS,
+    PRESENTATION_ICONS,
+    PREVIEW_ICONS,
+    SLIDE_ICONS,
+    VALIDATE_ICONS,
+)
 from office_mcp.models.element import ElementById, ElementInspectArgs
 from office_mcp.models.presentation import (
     PresentationExportArgs,
@@ -33,6 +42,26 @@ def _json(value: Any) -> str:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+
+
+def combine_contact_sheets(images: list[bytes]) -> bytes:
+    """Expose every sheet through the singular canonical preview resource."""
+    if not images:
+        return b""
+    if len(images) == 1:
+        return images[0]
+    decoded = [Image.open(io.BytesIO(data)).convert("RGB") for data in images]
+    gutter = 18
+    width = max(image.width for image in decoded)
+    height = sum(image.height for image in decoded) + gutter * (len(decoded) - 1)
+    combined = Image.new("RGB", (width, height), "#e5e7eb")
+    y = 0
+    for image in decoded:
+        combined.paste(image, ((width - image.width) // 2, y))
+        y += image.height + gutter
+    output = io.BytesIO()
+    combined.save(output, format="PNG", optimize=True)
+    return output.getvalue()
 
 
 def register_resources(
@@ -121,6 +150,7 @@ def register_resources(
         name="Presentation validation",
         title="Presentation validation",
         mime_type="application/json",
+        icons=VALIDATE_ICONS,
     )
     async def validation(presentation_id: str, ctx: Context) -> str:
         scope = await scopes.current()
@@ -153,7 +183,7 @@ def register_resources(
                 columns=columns,
             ),
         )
-        return images[0] if images else b""
+        return combine_contact_sheets(images)
 
     @mcp.resource(
         "office://presentations/{presentation_id}/revisions/{revision_id}",
@@ -251,6 +281,7 @@ def register_resources(
         name="Element",
         title="Slide element",
         mime_type="application/json",
+        icons=ELEMENT_ICONS,
     )
     async def element(presentation_id: str, slide_id: str, element_id: str, ctx: Context) -> str:
         scope = await scopes.current()

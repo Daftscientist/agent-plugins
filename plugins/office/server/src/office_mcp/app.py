@@ -85,7 +85,7 @@ def create_server(
     register_resources(mcp, service, store, scopes, cursor)
     register_prompts(mcp)
     register_completions(mcp, store, scopes)
-    register_scoped_subscriptions(mcp, scopes, subscriptions)
+    register_scoped_subscriptions(mcp, scopes, store, subscriptions)
     runtime = OfficeRuntime(config, store, scopes, output, service, cursor)
     return mcp, runtime
 

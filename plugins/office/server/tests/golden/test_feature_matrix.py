@@ -1,6 +1,6 @@
 import io
 import zipfile
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from mcp.server import MCPServer
@@ -22,6 +22,17 @@ from office_mcp.storage.protocols import LOCAL_SCOPE
 PNG_1PX = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 )
+
+RGB = tuple[int, int, int]
+
+
+def pixel(image: Image.Image, position: tuple[int, int]) -> RGB:
+    return cast(RGB, image.getpixel(position))
+
+
+def color_counts(image: Image.Image, size: tuple[int, int]) -> list[tuple[int, RGB]]:
+    thumbnail = image.resize(size)  # pyright: ignore[reportUnknownMemberType]
+    return cast(list[tuple[int, RGB]], thumbnail.getcolors(maxcolors=size[0] * size[1]) or [])
 
 
 @pytest.mark.integration
@@ -84,8 +95,48 @@ async def test_visual_feature_size_and_transition_matrix(
     )
     snapshot = await runtime.store.get(LOCAL_SCOPE, created.presentation_id)
     pngs = await runtime.service.adapter.preview_pngs(snapshot, {0, 1, 2, 3})
-    sizes = [Image.open(io.BytesIO(image)).size for image in pngs]
+    rendered = [Image.open(io.BytesIO(image)).convert("RGB") for image in pngs]
+    sizes = [image.size for image in rendered]
     assert sizes == [(2560, 1440), (1920, 1440), (1920, 1200), (1536, 1536)]
+
+    # Visual goldens for the authored feature families. These assertions
+    # intentionally inspect rendered pixels, not merely the input HTML.
+    effects = rendered[0]
+    assert pixel(effects, (20, 20)) != pixel(effects, (2540, 1420))  # gradient
+    thumbnail_colors = color_counts(effects, (256, 144))
+    assert len(thumbnail_colors) > 100  # gradient, antialiasing, text, border, shadow
+    assert sum(count for count, color in thumbnail_colors if max(color) < 90) > 20
+    assert (
+        sum(
+            1
+            for y in range(100, 430)
+            if sum(1 for x in range(100, 1200) if max(pixel(effects, (x, y))) < 100) > 20
+        )
+        > 60
+    )  # two-line heading plus effect text
+    assert any(
+        pixel(effects, (x, y))[2] > pixel(effects, (x, y))[0] + 40
+        for x in range(100, 1500, 10)
+        for y in range(250, 800, 10)
+    )  # blue border survives
+
+    imagery = rendered[1]
+    imagery_colors = color_counts(imagery, (192, 144))
+    assert any(color[0] > 220 and color[1] < 50 and color[2] < 50 for _, color in imagery_colors)
+    assert any(
+        color[0] > 160 and 35 < color[1] < 120 and color[2] < 80 for _, color in imagery_colors
+    )  # inline SVG circle
+
+    table_image = rendered[2]
+    assert (
+        sum(
+            1
+            for y in range(70, 500)
+            for x in range(70, 1200)
+            if max(pixel(table_image, (x, y))) < 100
+        )
+        > 500
+    )
 
     validation = await runtime.service.validate(
         LOCAL_SCOPE,
@@ -115,6 +166,7 @@ async def test_visual_feature_size_and_transition_matrix(
             if name.startswith("ppt/slides/slide") and name.endswith(".xml")
         )
     assert slide_xml.count(b"<p:transition") == 4
+    assert b"<a:tbl" in slide_xml
     roundtrip = await runtime.service.adapter.import_pptx(pptx)
     assert [slide.transition for slide in roundtrip.slides] == [
         SlideTransition.FADE,

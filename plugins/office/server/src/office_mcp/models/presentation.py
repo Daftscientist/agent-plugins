@@ -1,14 +1,16 @@
 """Presentation tool request and response models."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from .base import PresentationId, RevisionId, SlideId, StrictModel
 from .common import (
     Activity,
+    ColorToken,
+    FontToken,
     PresentationTheme,
     PresetSlideSize,
     SlideSize,
@@ -112,6 +114,15 @@ class PresentationSearchArgs(StrictModel):
     limit: int = Field(default=20, ge=1, le=100)
     cursor: str | None = Field(default=None, max_length=2048)
 
+    @field_validator("created_after", "created_before", "updated_after", "updated_before")
+    @classmethod
+    def utc_datetime(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
     @model_validator(mode="after")
     def valid_ranges(self) -> "PresentationSearchArgs":
         if self.created_after and self.created_before and self.created_after > self.created_before:
@@ -169,20 +180,44 @@ class PresentationInspectResult(StrictModel):
 
 
 class ThemePalettePatch(StrictModel):
-    background: str | None = None
-    foreground: str | None = None
-    accent: str | None = None
-    muted: str | None = None
+    background: ColorToken | None = None
+    foreground: ColorToken | None = None
+    accent: ColorToken | None = None
+    muted: ColorToken | None = None
+
+    @model_validator(mode="after")
+    def meaningful_patch(self) -> "ThemePalettePatch":
+        if not self.model_fields_set:
+            raise ValueError("palette patch must include at least one color")
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("theme colors cannot be cleared")
+        return self
 
 
 class ThemeFontsPatch(StrictModel):
-    heading: str | None = None
-    body: str | None = None
+    heading: FontToken | None = None
+    body: FontToken | None = None
+
+    @model_validator(mode="after")
+    def meaningful_patch(self) -> "ThemeFontsPatch":
+        if not self.model_fields_set:
+            raise ValueError("font patch must include at least one family")
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("theme font families cannot be cleared")
+        return self
 
 
 class PresentationThemePatch(StrictModel):
     palette: ThemePalettePatch | None = None
     fonts: ThemeFontsPatch | None = None
+
+    @model_validator(mode="after")
+    def meaningful_patch(self) -> "PresentationThemePatch":
+        if not self.model_fields_set:
+            raise ValueError("theme patch must include palette or fonts")
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("theme groups cannot be cleared")
+        return self
 
 
 class PresentationUpdateArgs(StrictModel):
@@ -198,6 +233,10 @@ class PresentationUpdateArgs(StrictModel):
     def has_patch(self) -> "PresentationUpdateArgs":
         if not ({"name", "description", "size", "theme"} & self.model_fields_set):
             raise ValueError("at least one mutable field must be supplied")
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("presentation name cannot be cleared")
+        if "theme" in self.model_fields_set and self.theme is None:
+            raise ValueError("presentation theme cannot be cleared")
         return self
 
 

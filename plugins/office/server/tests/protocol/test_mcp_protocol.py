@@ -44,6 +44,7 @@ async def test_identity_tools_schemas_prompts_resources_and_completions(
         ]
         templates = await client.list_resource_templates()
         assert len(templates.resource_templates) == 10
+        assert all(template.icons for template in templates.resource_templates)
         capabilities = await client.read_resource("office://capabilities")
         assert isinstance(capabilities.contents[0], types.TextResourceContents)
         assert "inline_css_only" in capabilities.contents[0].text
@@ -68,6 +69,17 @@ async def test_protocol_mutations_errors_resources_progress_and_media(
         assert isinstance(malformed.content[0], types.TextContent)
         assert "invalid presentation_create argument unknown" in malformed.content[0].text
         assert "INTERNAL_ERROR" not in malformed.content[0].text
+        unsafe_theme = await client.call_tool(
+            "presentation_create",
+            {
+                "name": "Theme SSRF",
+                "theme": {"palette": {"background": "url(http://127.0.0.1/pixel.png)"}},
+            },
+        )
+        assert unsafe_theme.is_error
+        assert isinstance(unsafe_theme.content[0], types.TextContent)
+        assert "literal CSS color" in unsafe_theme.content[0].text
+        assert "INTERNAL_ERROR" not in unsafe_theme.content[0].text
         unsafe = await client.call_tool(
             "presentation_create",
             {"name": "Bad", "slides": [{"name": "Bad", "html": "<script>x()</script>"}]},
@@ -93,6 +105,15 @@ async def test_protocol_mutations_errors_resources_progress_and_media(
         pid = str(created.structured_content["presentation_id"])
         revision = str(created.structured_content["revision"])
         sid = str(created.structured_content["slides"][0]["slide_id"])
+        for tool, arguments in (
+            ("presentation_update", {"presentation_id": pid, "name": None}),
+            ("slide_update", {"presentation_id": pid, "slide_id": sid, "name": None}),
+        ):
+            null_name = await client.call_tool(tool, arguments)
+            assert null_name.is_error
+            assert isinstance(null_name.content[0], types.TextContent)
+            assert "name cannot be cleared" in null_name.content[0].text
+            assert "INTERNAL_ERROR" not in null_name.content[0].text
         structure = await client.call_tool(
             "slide_inspect",
             {"presentation_id": pid, "slide_id": sid, "detail": "structure"},
@@ -129,6 +150,10 @@ async def test_protocol_mutations_errors_resources_progress_and_media(
         assert "Changed" in source.contents[0].text
         search = await client.call_tool("presentation_search", {"query": "Changed"})
         assert search.structured_content and len(search.structured_content["items"]) == 1
+        naive_search = await client.call_tool(
+            "presentation_search", {"created_after": "2020-01-01T00:00:00"}
+        )
+        assert not naive_search.is_error
         rendered = await client.call_tool(
             "presentation_preview",
             {
@@ -179,8 +204,11 @@ async def test_resource_pagination_completion_and_subscription_invalidation(
             types.PromptReference(type="ref/prompt", name="review_presentation"),
             {"name": "presentation_id", "value": "Deck 000"},
         )
-        assert completion.completion.values
-        assert "Deck 000" in completion.completion.values[0]
+        assert completion.completion.values == [first.presentation_id]
+        completed_resource = await client.read_resource(
+            f"office://presentations/{completion.completion.values[0]}"
+        )
+        assert isinstance(completed_resource.contents[0], types.TextResourceContents)
         root_uri = f"office://presentations/{first.presentation_id}"
         with anyio.fail_after(10):
             async with client.listen(
