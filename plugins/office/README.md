@@ -33,7 +33,7 @@ The source launcher is the current alpha distribution strategy. A future release
 
 ## Usage
 
-Ask an agent to create a deck, import a PPTX, refresh metrics, reuse a slide layout, preview a presentation, or validate/export a revision. The bundled presentation skill teaches the efficient inspect → element-edit → preview → validate → export workflow.
+Ask an agent to create a deck, import a PPTX, refresh metrics, reuse a slide layout, preview a presentation, or validate/export a revision. The bundled `presentations` Agent Skill teaches creation, editing, visual review, imported-deck handling, presentation design, and optional design-atlas inspiration through progressive-disclosure references, while the MCP provides the typed execution surface. See [the skill](skills/presentations/SKILL.md) and its [source provenance](skills/presentations/SOURCES.md).
 
 ## Tools
 
