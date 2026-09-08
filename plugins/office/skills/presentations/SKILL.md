@@ -1,6 +1,7 @@
 ---
 name: presentations
 description: Create, edit, redesign, review, and repair PowerPoint presentations. Use when the user wants slides, a deck, a pitch deck, a presentation, a PPTX file, or changes to an existing presentation.
+allowed-tools: office__presentation_* office__slide_* office__element_*
 ---
 
 # Presentations
