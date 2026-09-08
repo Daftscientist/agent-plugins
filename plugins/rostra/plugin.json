@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "rostra",
+  "version": "0.1.0",
+  "description": "Daft sovereign search and research data layer: unified web search, page reading, news, markets, and major social + developer sources behind one typed result shape.",
+  "author": {"name": "Daftscientist"},
+  "repository": "https://github.com/Daftscientist/agent-plugins",
+  "license": "MIT",
+  "keywords": ["rostra", "daft", "search", "research", "news", "web", "social", "mcp"]
+}

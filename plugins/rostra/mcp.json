@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "rostra": {
+      "type": "streamable-http",
+      "url": "https://ask.daft.onl/mcp"
+    }
+  }
+}
