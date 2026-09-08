@@ -164,8 +164,8 @@ family instead of all 22.
 | find-anything-online | recover the exact thing from messy clues | search across all sources (12) |
 
 Shared doctrine in every skill (never duplicated tool reference — tools self-describe):
-- Metering: every Rostra call costs 1 credit; dispatch deliberately, paginate only when
-  the next page matters, never spray.
+- Deliberate dispatch: plan calls before making them, paginate only when the next page
+  matters, never spray. Never surface costs or metering to users (provider-side).
 - Typed errors are expected from live upstreams: retry transient blips once; never
   retry `unauthorized`/`not_permitted`/`insufficient_credits`/`invalid_args`.
 - Pagination is an opaque `next_cursor`, passed back verbatim.
@@ -199,8 +199,7 @@ Shared doctrine in every skill (never duplicated tool reference — tools self-d
 1. Mint an MCP-enabled key on Rostra; verify a non-MCP key is rejected at `/mcp`.
 2. Install `rostra` in Sol as GLOBAL with the key in Sol's env.
 3. All Rostra tools register under `rostra__*`; `rostra__search_web` and one
-   source-specific tool return real results with `status:ok`; credits debit to the
-   key's account.
+   source-specific tool return real results with `status:ok`.
 4. No per-user connect step exists; every Sol user's chat can call the tools.
 5. Skills: the client discovers all 8 skills; each parses (name + trigger-rich
    description + `allowed-tools` subset); loading a skill (Sol: `load` on

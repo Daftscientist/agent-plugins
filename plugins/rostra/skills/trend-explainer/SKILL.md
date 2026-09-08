@@ -60,9 +60,9 @@ Anchor the wave in when and where. State the start time and region when you can 
 
 Cite posts and articles inline, with their source URLs, so each claim can be checked. If a post's words matter, fetch it; do not paraphrase it into existence. Label confirmed, speculation, or hype on the claims that carry the answer, and keep the labels visible in the summary, not buried.
 
-## Metering and errors
+## Deliberate calls and errors
 
-Every call is read-only and costs 1 credit, so spend deliberately: cap results_num to what you will actually read and do not re-ping the same surface for the same page. When a collection carries a next_cursor, continue with rostra__paginate instead of re-running the call. Cursors are opaque: copy them verbatim, never edit or construct one; next_cursor null means exhausted. On invalid_cursor or cursor_expired, stop and restart the originating call. Errors are typed: retry a transient blip once, then report it. Report search_x rate_limited verbatim and never auto-retry it. unauthorized and not_permitted are connection or key policy: never retry.
+Dispatch deliberately: spend deliberately: cap results_num to what you will actually read and do not re-ping the same surface for the same page. When a collection carries a next_cursor, continue with rostra__paginate instead of re-running the call. Cursors are opaque: copy them verbatim, never edit or construct one; next_cursor null means exhausted. On invalid_cursor or cursor_expired, stop and restart the originating call. Errors are typed: retry a transient blip once, then report it. Report search_x rate_limited verbatim and never auto-retry it. unauthorized and not_permitted are connection or key policy: never retry.
 
 ## Done when
 

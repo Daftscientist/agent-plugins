@@ -83,9 +83,9 @@ user_loc. Use it for pulse questions ("what is everyone watching") and as a
 discovery entry point, then switch to the single-video workflow on anything
 worth digesting.
 
-## Metering and errors
+## Deliberate calls and errors
 
-Every call costs 1 credit, so one fetch with transcript and comments beats
+Dispatch deliberately: one fetch with transcript and comments beats
 several bare fetches. Paginate only when the first page genuinely lacks what
 you need; cursors are opaque, copy them verbatim, and on invalid_cursor or
 cursor_expired restart the originating call. Retry transient blips

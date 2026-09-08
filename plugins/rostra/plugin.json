@@ -2,9 +2,20 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "rostra",
   "version": "0.1.0",
-  "description": "Daft sovereign search and research data layer: unified web search, page reading, news, markets, and major social + developer sources behind one typed result shape.",
-  "author": {"name": "Daftscientist"},
+  "description": "Search the outside world from one endpoint: web search, page fetch with pagination, news and breaking news, prediction markets, and the major social and developer platforms: Reddit, Hacker News, Mastodon, Bluesky, X, GitHub, and YouTube. Read-only. Load the group for broad lookups; load a scoped skill when the job matches one.",
+  "author": {
+    "name": "Daftscientist"
+  },
   "repository": "https://github.com/Daftscientist/agent-plugins",
   "license": "MIT",
-  "keywords": ["rostra", "daft", "search", "research", "news", "web", "social", "mcp"]
+  "keywords": [
+    "rostra",
+    "daft",
+    "search",
+    "research",
+    "news",
+    "web",
+    "social",
+    "mcp"
+  ]
 }

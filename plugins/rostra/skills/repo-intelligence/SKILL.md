@@ -21,7 +21,7 @@ allowed-tools:
 Health is not stars. Finish every judgment with a verdict, the named risk, and the alternative if
 the risk bites.
 
-All Rostra calls are read-only and metered at 1 credit each, so think before you spend: one broad
+All Rostra calls are read-only, so think before you spend: one broad
 search beats five narrow ones, and paginate only when the verdict actually needs more pages.
 Responses are typed envelopes ({"status": "ok", "results": [...], "next_cursor": ...}); a typed
 error code (rate_limited, upstream_unavailable, invalid_args, insufficient_credits) with a message

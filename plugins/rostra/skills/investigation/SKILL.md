@@ -18,8 +18,7 @@ allowed-tools:
 # Investigation
 
 Investigating is not answering a question: you rebuild a sequence of events
-with receipts, then judge the claim against them. Every call here is read-only
-and costs 1 credit, so work deliberately: think before each query, prefer one
+with receipts, then judge the claim against them. so work deliberately: think before each query, prefer one
 targeted search plus a fetch of the winning result over five scattershot calls,
 and only paginate when the first page shows a real lead.
 

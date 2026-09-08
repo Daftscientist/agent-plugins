@@ -5,7 +5,7 @@ description: |-
   or take. Use for "what do people think of X", "is X any good", "worth it?", reviews and reception,
   what a market or niche is complaining about, reading backlash to a launch, or mapping the
   communities that make up a niche. The ground is Reddit, Hacker News, X, Bluesky, Mastodon and
-  YouTube comments, with news coverage as a separate lens. Everything is read-only and metered, so
+  YouTube comments, with news coverage as a separate lens. Everything is read-only, so
   read deliberately.
 allowed-tools:
   - rostra__search_x
@@ -82,9 +82,10 @@ Not a poll, a read.
 - Sort and recency shape results: the settled take (top) differs from the current one (latest/new).
   Say which you read.
 
-## Metering and errors
+## Deliberate calls and errors
 
-- Every call costs 1 credit. Fetch only threads you will read and page only collections you already
+- Dispatch deliberately.
+Fetch only threads you will read and page only collections you already
   used; paying for pages you skim is waste. Prefer a few well-chosen threads over a dozen shallow
   ones.
 - Retry a transient blip (rate_limited, upstream_unavailable) once, then report it and move on. On

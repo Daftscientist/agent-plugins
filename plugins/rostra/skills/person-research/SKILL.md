@@ -8,18 +8,19 @@ description: >-
   aliases come first, then official sites and primary accounts, then current
   role and status against stale mentions, then what they say, make, and what
   others say, with verified facts kept apart from inference and reputation.
-  Every call costs a credit, so resolve before you search and finish in a
+  Dispatch deliberately: resolve before you search and finish in a
   structured brief.
 allowed-tools: rostra__search_web rostra__search_x rostra__search_reddit rostra__search_youtube rostra__search_github rostra__search_hackernews rostra__search_mastodon rostra__search_bluesky rostra__news_search rostra__fetch rostra__paginate
 ---
 
 # Person research
 
-Build a reliable picture of who a person, company, project, organisation, or product really is: the identity behind the name, what they claim, what they have done, what others say, and what is current. The same method serves a "who are they" brief and an "is this seller legit" check. Everything here is read-only and metered, so the work is planning, not spraying.
+Build a reliable picture of who a person, company, project, organisation, or product really is: the identity behind the name, what they claim, what they have done, what others say, and what is current. The same method serves a "who are they" brief and an "is this seller legit" check. Everything here is read-only, so the work is planning, not spraying.
 
 ## Standing rules
-- Every Rostra call costs 1 credit. Plan the calls before making them, keep per-call result counts small, batch related queries into one round, and paginate only when the next page could change the answer. Never spray queries to see what sticks.
-- Read the envelopes: transient upstream blips (upstream_unavailable) get one retry; policy and metering errors (unauthorized, not_permitted, rate_limited, insufficient_credits) are reported verbatim, never retried; invalid_args means fix the call, not repeat it.
+- Dispatch deliberately.
+Plan the calls before making them, keep per-call result counts small, batch related queries into one round, and paginate only when the next page could change the answer. Never spray queries to see what sticks.
+- Read the envelopes: transient upstream blips (upstream_unavailable) get one retry; policy errors (unauthorized, not_permitted, rate_limited, insufficient_credits) are reported verbatim, never retried; invalid_args means fix the call, not repeat it.
 - Every kept claim carries its inline source URL, and only what you actually saw is cited. Never fabricate a URL, handle, title, or quote; a not_found stays not found and is reported as such.
 
 ## Phase 1: fix the identity before any search

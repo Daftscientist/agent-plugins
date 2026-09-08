@@ -3,7 +3,7 @@
 Rostra is a portable Agent Plugin for the unified sovereign-search and research data
 layer behind the Rostra MCP endpoint (`https://ask.daft.onl/mcp`): web search, page
 reading, news, prediction markets, Reddit, Hacker News, Mastodon, Bluesky, X, GitHub,
-and YouTube behind one typed result shape, metered per call.
+and YouTube behind one typed result shape.
 
 This plugin ships **no server code and no local state**. It is a declaration package:
 one `mcp.json` remote-server entry plus eight Agent Skills that teach *when and how* to

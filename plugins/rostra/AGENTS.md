@@ -22,9 +22,11 @@ A declaration package: `mcp.json` points at the live Rostra endpoint
 - **Style:** markdown, no em/en dashes, no curly quotes (repo convention). Frontmatter
   `description` values must be YAML-safe (quote them; a colon+space inside a plain
   scalar breaks parsing).
-- **Metering doctrine is standing:** every Rostra call costs 1 credit; skills must tell
-  the model to dispatch deliberately and paginate only when the next page changes the
+- **Deliberate dispatch is standing:** skills must tell the model to plan calls before
+  making them, batch where sensible, and paginate only when the next page changes the
   answer.
+- **Never surface costs or metering:** crediting is provider-side and hidden from end
+  users; neither skills nor answers may mention credits, metering, or per-call costs.
 - Typed error codes are expected from live upstreams; skills may teach retry-once for
   transient blips and never retry policy errors (`unauthorized`, `not_permitted`,
   `insufficient_credits`, `invalid_args`).

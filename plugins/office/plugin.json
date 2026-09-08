@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "office",
   "version": "0.1.0",
-  "description": "Create, edit, preview, and export PowerPoint (.pptx) decks in chat \u2014 import an existing presentation, refine slides and elements, validate structure, and download a file that stays fully editable in Office.",
+  "description": "Build and edit PowerPoint decks end to end: create and import decks, inspect and update slides and elements, validate structure, render previews, search existing work, and export the final file. Load the group when a task needs deck files; the presentations skill teaches the authoring method.",
   "author": {
     "name": "Daftscientist"
   },

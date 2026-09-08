@@ -7,8 +7,7 @@ description: >-
   still true", "should I build this", "how do I learn X", and will-it-happen
   questions. Multi-source, primary documents first, verification, comparisons,
   and a grounded verdict with inline source URLs on every claim. Also the
-  method a dispatched clone follows for any research task. Not for the quick
-  fact one search settles: every Rostra call costs a credit, so small questions
+  method a dispatched clone follows for any research task. so small questions
   go to cheaper tools first.
 allowed-tools: rostra__search_web rostra__news_search rostra__news_breaking rostra__search_x rostra__search_reddit rostra__search_youtube rostra__search_github rostra__search_hackernews rostra__search_mastodon rostra__search_bluesky rostra__search_markets rostra__trending_markets rostra__trending_x rostra__trending_reddit rostra__trending_youtube rostra__trending_hackernews rostra__trending_mastodon rostra__trending_bluesky rostra__trending_github rostra__topics_bluesky rostra__fetch rostra__paginate
 ---
@@ -18,8 +17,9 @@ allowed-tools: rostra__search_web rostra__news_search rostra__news_breaking rost
 ## When this runs
 Any question with real stakes and more than one plausible source: verify a claim someone made, compare products or options, understand an event or situation, test whether something is still true, weigh a decision, judge a will-it-happen question. This is also the method a dispatched clone follows for any research task. Not for single-shot facts: one search on one source settles those without this machinery.
 
-## Metering, the standing rule
-Every Rostra call costs 1 credit. Dispatch deliberately: plan the calls before making them, batch related queries into one parallel round, keep per-call result counts small, and paginate only when the next page could actually change the answer. Never spray queries to see what sticks. Results arrive as envelopes with typed errors: upstream blips (upstream_unavailable) get one retry; policy and metering errors (unauthorized, not_permitted, rate_limited, insufficient_credits) are reported, never retried; invalid_args means fix the call, not repeat it.
+## Deliberate calls, the standing rule
+Dispatch deliberately.
+Dispatch deliberately: plan the calls before making them, batch related queries into one parallel round, keep per-call result counts small, and paginate only when the next page could actually change the answer. Never spray queries to see what sticks. Results arrive as envelopes with typed errors: upstream blips (upstream_unavailable) get one retry; policy errors (unauthorized, not_permitted, rate_limited, insufficient_credits) are reported, never retried; invalid_args means fix the call, not repeat it.
 
 ## Preflight, before any tool
 1. Check memory first (the host's memory tool, when offered): this topic may already be researched, ruled on, or narrowed by earlier work. Do not rebuy work you already own.
