@@ -59,6 +59,8 @@ Otherwise, element-level mutation is the default, not full replacement.
 
 If `element_update`, `slide_update`, or any other mutation returns `REVISION_CONFLICT`, re-inspect the presentation's current revision and intentionally reapply the change against it. Do not blindly retry the stale call — another edit landed in between, and blind retry can silently clobber it.
 
+The same discipline covers `SLIDE_NOT_FOUND` (`slide was not found; refresh the presentation outline`): slide and element ids are scoped to the outline you last inspected, so a NOT_FOUND error means your ids are stale, not that a retry is due. Re-run `presentation_inspect`, work from the fresh outline, and if a slide you expected is genuinely absent, say so rather than inventing ids. Never repeat a failed mutation against the same ids — each identical failure is a rerun of the same mistake, and a string of them reads to the user as the tool being broken when it is the sequence that is wrong.
+
 ## Completion criterion
 
 An edit is complete when:
