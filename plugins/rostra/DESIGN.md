@@ -41,9 +41,22 @@ plugins/rostra/
 ├── CHANGELOG.md
 ├── LICENSE                  # MIT (repo convention)
 └── skills/
-    └── rostra/
-        ├── SKILL.md         # one discovered skill: tool selection + usage contract
-        └── references/      # per-source quirks, result-shape notes, citing rules
+    ├── topic-research/
+    │   └── SKILL.md         # deep research: strands, primary sources, synthesis
+    ├── person-research/
+    │   └── SKILL.md         # identity-first briefs on people/orgs/products
+    ├── investigation/
+    │   └── SKILL.md         # trace claims to origin; what the receipts say
+    ├── vibe-check/
+    │   └── SKILL.md         # community reception across platforms
+    ├── repo-intelligence/
+    │   └── SKILL.md         # OSS due diligence, adoption judgment
+    ├── trend-explainer/
+    │   └── SKILL.md         # why something is blowing up, real or manufactured
+    ├── video-digest/
+    │   └── SKILL.md         # video to usable knowledge, currency-checked
+    └── find-anything-online/
+        └── SKILL.md         # recover the exact thing from messy clues
 ```
 
 No `server/` directory: there is nothing to build or run locally. No `on.daft.sol`
@@ -131,22 +144,33 @@ Any other Agent Plugins client can install `rostra` unchanged and choose its own
 
 ## 5. Skills
 
-One discovered skill, `skills/rostra/SKILL.md` (office precedent: one skill + one-hop
-references; a new discovered skill needs an independent invocation branch — here the
-whole surface is one coherent "research/data lookup" capability):
+Eight procedure skills, one per research job, under `skills/<slug>/SKILL.md` (Agent
+Skills spec: `name`, trigger-rich `description`, optional `allowed-tools`). They are
+**task-shaped, not source-shaped**: each is activated by intent and carries the
+workflow strategy, evidence discipline, and output contract; source selection is
+taught inside the workflow. Every skill declares `allowed-tools` scoping exactly the
+Rostra subset its job needs, so a client honouring the field projects a tight tool
+family instead of all 22.
 
-- **SKILL.md**: when to reach for Rostra vs the client's native tools; tool-selection
-  guidance per intent (web vs news vs market vs social source vs page fetch); the
-  unified result shape; hard rule to cite returned source URLs inline; error-code
-  handling (typed errors are expected from live upstreams — retry before blaming the
-  tool; `unauthorized`/`not_permitted` mean connection/key policy, never retry);
-  pagination via `next_cursor`.
-- **references/** (authored from the grounded upstream tool spec — never duplicated
-  tool reference, only workflow/expertise):
-  - `tool-selection.md` — which tool for which intent and source;
-  - `source-quirks.md` — per-source caveats (e.g. X people results need screen names;
-    some surfaces ignore region controls; detail tools take explicit ids);
-  - `citing.md` — inline citation + provenance-field rules.
+| Skill | Job | Tool family (subset of the 22) |
+|---|---|---|
+| topic-research | open question answered with an intentional source plan | full catalogue minus nothing (22) |
+| person-research | identity-first brief on a person/org/product | web, X, Reddit, GitHub, socials, news (11) |
+| investigation | claim traced to origin, support graded | web, news, socials, video (11) |
+| vibe-check | reception and disagreement across communities | socials + trends + fetch (16) |
+| repo-intelligence | OSS due diligence and adoption judgment | GitHub, trends, web, HN (8) |
+| trend-explainer | why it's blowing up, confirmed vs hype | trends + search + news (16) |
+| video-digest | video to usable knowledge, currency-checked | YouTube + fetch + surrounding talk (9) |
+| find-anything-online | recover the exact thing from messy clues | search across all sources (12) |
+
+Shared doctrine in every skill (never duplicated tool reference — tools self-describe):
+- Metering: every Rostra call costs 1 credit; dispatch deliberately, paginate only when
+  the next page matters, never spray.
+- Typed errors are expected from live upstreams: retry transient blips once; never
+  retry `unauthorized`/`not_permitted`/`insufficient_credits`/`invalid_args`.
+- Pagination is an opaque `next_cursor`, passed back verbatim.
+- Every grounded claim is cited inline with the returned source URL; never fabricate.
+- Client-native lookups (memory) come first where the answer may already be known.
 
 ## 6. Quality gates
 
@@ -166,8 +190,9 @@ whole surface is one coherent "research/data lookup" capability):
   non-MCP keys, policy checks).
 - **M3 — Sol global injection**: Sol ADR → extension field + `enable()` secret
   resolution + adapter header merge → symlink-enable on LeoVM → E2E.
-- **M4 — Skills + polish**: author SKILL.md + references from grounded tool spec;
-  CHANGELOG; final review.
+- **M4 — Skills + polish**: author the 8 SKILL.md files from the legacy July
+  prototypes mined against the live surface; validate frontmatter with the client's own
+  parser; README/CHANGELOG; final review. Done when skills commit clean.
 
 ## 8. E2E acceptance (before "done")
 
@@ -177,4 +202,6 @@ whole surface is one coherent "research/data lookup" capability):
    source-specific tool return real results with `status:ok`; credits debit to the
    key's account.
 4. No per-user connect step exists; every Sol user's chat can call the tools.
-5. Skills: `skill_search` returns the skill; `skill_load` reads it.
+5. Skills: the client discovers all 8 skills; each parses (name + trigger-rich
+   description + `allowed-tools` subset); loading a skill (Sol: `load` on
+   `plugin://rostra/<slug>/SKILL.md`) projects exactly its declared family.
